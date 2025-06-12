@@ -74,7 +74,7 @@ def _validate_file(file: UploadFile) -> None:
         )
 
 
-def _save_uploaded_file(file: UploadFile) -> Path:
+def _save_uploaded_file(file: UploadFile, topic_name: str) -> Path:
     """
     Save uploaded file to disk in its own directory.
     Structure: UPLOAD_DIR/filename/filename
@@ -93,7 +93,7 @@ def _save_uploaded_file(file: UploadFile) -> Path:
 
         # Create directory structure: UPLOAD_DIR/filename
         filename = file.filename
-        file_dir = UPLOAD_DIR / filename
+        file_dir = UPLOAD_DIR / topic_name / filename
         if file_dir.exists():
             return file_dir / filename
 
@@ -219,7 +219,7 @@ async def upload_documents(
             _validate_file(file)
 
             # Save file
-            file_path = _save_uploaded_file(file)
+            file_path = _save_uploaded_file(file, topic_name)
 
             # Process document
             processed_doc = _process_document(file_path, metadata)
@@ -399,6 +399,7 @@ def _build_documents_info_batch(db, documents: List[SourceData]) -> List[Documen
                 "status": status.status,
                 "created_at": status.created_at.isoformat(),
                 "updated_at": status.updated_at.isoformat(),
+                "scheduled_at": status.scheduled_at.isoformat(),
                 "error_message": status.error_message,
             }
         )

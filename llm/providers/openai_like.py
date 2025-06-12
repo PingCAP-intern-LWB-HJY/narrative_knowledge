@@ -26,7 +26,6 @@ class OpenAILikeProvider(BaseLLMProvider):
             api_key = os.getenv("OPENAI_LIKE_API_KEY")
         if base_url is None:
             base_url = os.getenv("OPENAI_LIKE_BASE_URL")
-        print(f"OpenAI Base URL: {base_url}")
         self.client = openai.OpenAI(api_key=api_key, base_url=base_url)
 
     def generate(

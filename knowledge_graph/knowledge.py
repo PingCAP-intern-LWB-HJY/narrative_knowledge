@@ -27,6 +27,27 @@ class KnowledgeBuilder:
         if doc_link is None or doc_link == "":
             doc_link = source_path
 
+        with SessionLocal() as db:
+            # Check if source data already exists by hash or doc_link
+            existing_source = (
+                db.query(SourceData).filter((SourceData.link == doc_link)).first()
+            )
+
+            if existing_source:
+                logger.info(
+                    f"Source data already exists for {source_path} (matched by link), id: {existing_source.id}"
+                )
+
+                return {
+                    "status": "success",
+                    "source_id": existing_source.id,
+                    "source_type": existing_source.source_type,
+                    "source_path": source_path,
+                    "source_content": existing_source.content,
+                    "source_link": existing_source.link,
+                    "source_name": existing_source.name,
+                }
+
         try:
             source_info = extract_source_data(source_path)
         except Exception as e:

@@ -4,3 +4,4 @@ docs/
 .env
 uploads/
 test.py
+*.log

@@ -291,6 +291,9 @@ class GraphBuildStatus(Base):
     updated_at = Column(
         DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
     )
+    scheduled_at = Column(
+        DateTime, default=func.current_timestamp(), nullable=False
+    )  # Schedule time for processing, defaults to created_at but can be modified
     error_message = Column(Text, nullable=True)
     progress_info = Column(JSON, nullable=True)  # Store build progress details
 
