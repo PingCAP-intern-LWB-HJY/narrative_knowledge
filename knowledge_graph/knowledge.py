@@ -3,7 +3,7 @@ import logging
 import hashlib
 from typing import Dict, Any
 
-from knowledge_graph.models import SourceData
+from knowledge_graph.models import SourceData, GraphBuildStatus
 from setting.db import SessionLocal
 from etl.extract import extract_source_data
 
@@ -34,6 +34,7 @@ class KnowledgeBuilder:
             raise RuntimeError(f"Failed to process{source_path}: {e}")
 
         full_content = source_info.get("content", None)
+        source_type = source_info.get("file_type", "document")
 
         name = Path(source_path).stem
         source_hash = hashlib.sha256(full_content.encode("utf-8")).hexdigest()
@@ -52,6 +53,7 @@ class KnowledgeBuilder:
                 return {
                     "status": "success",
                     "source_id": existing_source.id,
+                    "source_type": existing_source.source_type,
                     "source_path": source_path,
                     "source_content": existing_source.content,
                     "source_link": existing_source.link,
@@ -62,7 +64,7 @@ class KnowledgeBuilder:
                     name=name,
                     content=full_content,
                     link=doc_link,
-                    data_type="document",
+                    source_type=source_type,
                     hash=source_hash,
                     attributes=attributes,
                 )
@@ -81,4 +83,49 @@ class KnowledgeBuilder:
                     "source_content": source_data.content,
                     "source_link": source_data.link,
                     "source_name": source_data.name,
+                    "source_type": source_type,
                 }
+
+    def create_build_status_record(self, source_id: str, topic_name: str) -> None:
+        """
+        Create a GraphBuildStatus record for the uploaded document.
+
+        Args:
+            source_id: The source document ID
+            topic_name: The topic name for graph building
+
+        Raises:
+            Exception: If database operation fails
+        """
+        try:
+            with SessionLocal() as db:
+                # Check if record already exists
+                existing_status = (
+                    db.query(GraphBuildStatus)
+                    .filter(
+                        GraphBuildStatus.topic_name == topic_name,
+                        GraphBuildStatus.source_id == source_id,
+                    )
+                    .first()
+                )
+
+                if not existing_status:
+                    # Create new build status record
+                    build_status = GraphBuildStatus(
+                        topic_name=topic_name,
+                        source_id=source_id,
+                        status="pending",
+                    )
+                    db.add(build_status)
+                    db.commit()
+                    logger.info(
+                        f"Created build status record for source {source_id} in topic {topic_name}"
+                    )
+                else:
+                    logger.info(
+                        f"Build status record already exists for source {source_id} in topic {topic_name}"
+                    )
+
+        except Exception as e:
+            logger.error(f"Failed to create build status record: {e}")
+            raise

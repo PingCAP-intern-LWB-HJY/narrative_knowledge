@@ -204,6 +204,37 @@ def convert_pdf_using_magic_pdf(pdf_path):
         raise RuntimeError(f"Error processing {pdf_path} with magic_pdf: {e}")
 
 
+def extract_data_from_text_file(path):
+    """
+    Extract data from text-based files (markdown, txt, sql)
+    """
+    try:
+        logger.info(f"Reading text file: {path}")
+        full_content = read_file_content(path)
+
+        # Determine file type from extension
+        path_obj = Path(path)
+        file_extension = path_obj.suffix.lower()
+
+        if file_extension == ".md":
+            file_type = "markdown"
+        elif file_extension == ".txt":
+            file_type = "document"
+        elif file_extension == ".sql":
+            file_type = "sql"
+        else:
+            raise RuntimeError(f"Unsupported file type: {file_extension} for {path}")
+
+        return {
+            "status": "success",
+            "content": full_content,
+            "file_type": file_type,
+        }
+    except Exception as e:
+        logger.error(f"Error reading text file {path}: {e}", exc_info=True)
+        raise RuntimeError(f"Error reading text file {path}: {e}")
+
+
 def extract_data_from_pdf(path):
     """
     Extract data from files in the docs directory
@@ -221,7 +252,7 @@ def extract_data_from_pdf(path):
         return {
             "status": "success",
             "content": full_content,
-            "markdown_file": markdown_file,
+            "file_type": "pdf",
         }
     except Exception as e:
         logger.error(f"Error extracting data from {path}: {e}", exc_info=True)
@@ -237,7 +268,11 @@ def extract_source_data(path: str) -> str:
         logger.error(f"Path {path} is not a file")
         raise ValueError(f"Path {path} is not a file")
 
-    if pdf_path_obj.suffix == ".pdf":
-        return extract_data_from_pdf(path)
+    file_extension = pdf_path_obj.suffix.lower()
 
-    raise RuntimeError(f"Unsupported file type: {pdf_path_obj.suffix} for {path}")
+    if file_extension == ".pdf":
+        return extract_data_from_pdf(path)
+    elif file_extension in [".md", ".txt", ".sql"]:
+        return extract_data_from_text_file(path)
+
+    raise RuntimeError(f"Unsupported file type: {file_extension} for {path}")

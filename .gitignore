@@ -2,3 +2,5 @@ __pycache__
 docs/
 .venv/
 .env
+uploads/
+test.py

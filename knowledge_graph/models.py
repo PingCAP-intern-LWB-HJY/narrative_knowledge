@@ -29,8 +29,17 @@ class SourceData(Base):
     name = Column(String(255), nullable=False)
     content = Column(LONGTEXT, nullable=True)
     link = Column(String(512), nullable=True)
-    data_type = Column(
-        Enum("document", "code", "image", "video", "pdf", "spreadsheet"),
+    source_type = Column(
+        Enum(
+            "document",
+            "code",
+            "image",
+            "video",
+            "pdf",
+            "spreadsheet",
+            "sql",
+            "markdown",
+        ),
         nullable=False,
         default="document",
     )
@@ -54,7 +63,7 @@ class SourceData(Base):
     __table_args__ = (
         Index("uq_source_data_link", "link", unique=True),
         Index("idx_source_data_name", "name"),
-        Index("idx_source_data_data_type", "data_type"),
+        Index("idx_source_source_type", "source_type"),
     )
 
     def __repr__(self):
@@ -262,3 +271,38 @@ class DocumentSummary(Base):
 
     def __repr__(self):
         return f"<DocumentSummary(doc_id={self.document_id}, topic={self.topic_name})>"
+
+
+class GraphBuildStatus(Base):
+    """Graph build status tracking for each topic-source combination"""
+
+    __tablename__ = "graph_build_status"
+
+    topic_name = Column(String(255), primary_key=True, nullable=False)
+    source_id = Column(
+        String(36), ForeignKey("source_data.id"), primary_key=True, nullable=False
+    )
+    status = Column(
+        Enum("pending", "processing", "completed", "failed"),
+        nullable=False,
+        default="pending",
+    )
+    created_at = Column(DateTime, default=func.current_timestamp())
+    updated_at = Column(
+        DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+    error_message = Column(Text, nullable=True)
+    progress_info = Column(JSON, nullable=True)  # Store build progress details
+
+    # Relationships
+    source_data = relationship("SourceData")
+
+    __table_args__ = (
+        Index("idx_graph_build_status_topic", "topic_name"),
+        Index("idx_graph_build_status_source", "source_id"),
+        Index("idx_graph_build_status_status", "status"),
+        Index("idx_graph_build_status_created", "created_at"),
+    )
+
+    def __repr__(self):
+        return f"<GraphBuildStatus(topic={self.topic_name}, source={self.source_id}, status={self.status})>"
