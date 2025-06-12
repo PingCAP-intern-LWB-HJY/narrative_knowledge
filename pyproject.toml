@@ -1,0 +1,27 @@
+[project]
+name = "narrative-knowledge"
+version = "0.0.1"
+description = "Semantic analysis of narrative texts to extract entities and relationships"
+authors = [
+    {name = "IANTHEREAL"}
+]
+license = {text = "Apache-2.0"}
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "pymupdf (>=1.26.1,<2.0.0)",
+    "pdf2image (>=1.17.0,<2.0.0)",
+    "pandas (>=2.3.0,<3.0.0)",
+    "openai (>=1.86.0,<2.0.0)",
+    "sqlalchemy (>=2.0.41,<3.0.0)",
+    "python-dotenv (>=1.1.0,<2.0.0)",
+    "boto3 (>=1.38.35,<2.0.0)",
+    "google-genai (>=1.20.0,<2.0.0)",
+    "pymysql (>=1.1.1,<2.0.0)",
+    "tidb-vector (>=0.0.14,<0.0.15)",
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
