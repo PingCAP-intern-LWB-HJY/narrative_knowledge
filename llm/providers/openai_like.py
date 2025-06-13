@@ -40,8 +40,7 @@ class OpenAILikeProvider(BaseLLMProvider):
             messages = [{"role": "user", "content": prompt}]
 
         try:
-            response = self._retry_with_exponential_backoff(
-                self.client.chat.completions.create,
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 stream=True,  # Enable streaming
@@ -96,8 +95,7 @@ class OpenAILikeProvider(BaseLLMProvider):
         else:
             messages = [{"role": "user", "content": prompt}]
         try:
-            response = self._retry_with_exponential_backoff(
-                self.client.chat.completions.create,
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 stream=True,  # Enable streaming
