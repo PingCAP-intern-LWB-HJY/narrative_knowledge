@@ -38,25 +38,52 @@ class OpenAILikeProvider(BaseLLMProvider):
             ]
         else:
             messages = [{"role": "user", "content": prompt}]
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            **self._update_kwargs(kwargs),
-        )
 
-        if response.choices is None:
-            raise Exception(f"LLM response is None: {response.error}")
-
-        if hasattr(response.choices[0].message, "reasoning_content"):
-            return (
-                "<reasoning>"
-                + response.choices[0].message.reasoning_content
-                + "</reasoning>\n<answer>"
-                + response.choices[0].message.content
-                + "</answer>"
+        try:
+            response = self._retry_with_exponential_backoff(
+                self.client.chat.completions.create,
+                model=self.model,
+                messages=messages,
+                stream=True,  # Enable streaming
+                **self._update_kwargs(kwargs),
             )
 
-        return response.choices[0].message.content.strip()
+            response_text = ""
+            for chunk in response:
+                if (
+                    chunk is None
+                    or chunk.choices is None
+                    or len(chunk.choices) == 0
+                    or chunk.choices[0].delta is None
+                ):
+                    continue
+
+                if (
+                    hasattr(chunk.choices[0].delta, "content")
+                    and chunk.choices[0].delta.content is not None
+                ):
+                    response_text += chunk.choices[0].delta.content
+
+            return response_text
+
+            """
+            if response.choices is None:
+                raise Exception(f"LLM response is None: {response.error}")
+
+            if hasattr(response.choices[0].message, "reasoning_content"):
+                return (
+                    "<reasoning>"
+                    + response.choices[0].message.reasoning_content
+                    + "</reasoning>\n<answer>"
+                    + response.choices[0].message.content
+                    + "</answer>"
+                )
+
+            return response.choices[0].message.content.strip()
+            """
+        except Exception as e:
+            logger.error(f"Error during OpenAI generation: {e}")
+            raise e
 
     def generate_stream(
         self, prompt: str, system_prompt: Optional[str] = None, **kwargs

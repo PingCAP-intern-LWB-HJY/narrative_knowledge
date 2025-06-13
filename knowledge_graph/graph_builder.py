@@ -124,23 +124,16 @@ class KnowledgeGraphBuilder:
                 f"Processing document {doc['source_name']}: {doc_semantic} narrative + {doc_structural} skeletal triplets"
             )
 
-            try:
-                new_entities_created, new_relationships_created = (
-                    self.graph_builder.convert_triplets_to_graph(
-                        triplets, doc["source_id"]
-                    )
+            new_entities_created, new_relationships_created = (
+                self.graph_builder.convert_triplets_to_graph(
+                    triplets, doc["source_id"]
                 )
-                entities_created += new_entities_created
-                relationships_created += new_relationships_created
-                logger.info(
-                    f"Successfully processed: {new_entities_created} entities, {new_relationships_created} relationships"
-                )
-            except Exception as e:
-                logger.error(
-                    f"Error processing triplets for document {doc['source_name']}: {e}. Triplets that caused error: {triplets[:3] if triplets else 'No triplets'}"
-                )
-                # Continue with next document instead of crashing
-                continue
+            )
+            entities_created += new_entities_created
+            relationships_created += new_relationships_created
+            logger.info(
+                f"Successfully processed: {new_entities_created} entities, {new_relationships_created} relationships"
+            )
 
         logger.info(
             f"Total triplets extracted: {all_triplets} ({semantic_triplets_count} semantic + {structural_triplets_count} structural)"

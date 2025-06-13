@@ -103,7 +103,7 @@ Now, please generate the skeletal graph for {topic_name}.
 """
 
         try:
-            response = self.llm_client.generate(skeletal_prompt)
+            response = self.llm_client.generate(skeletal_prompt, max_tokens=8192)
             json_str = extract_json(response)
             if not json_str:
                 raise ValueError(f"Failed to parse skeletal graph response: {response}")
@@ -196,7 +196,7 @@ Now, please generate the analysis blueprint for {topic_name}.
 
             try:
                 logger.info(f"Generating analysis blueprint for {topic_name}")
-                response = self.llm_client.generate(blueprint_prompt)
+                response = self.llm_client.generate(blueprint_prompt, max_tokens=4096)
 
                 # Extract JSON from response
                 json_str = extract_json(response)
@@ -403,7 +403,7 @@ Now, please generate the narrative triplets for {topic_name}.
 """
 
         try:
-            response = self.llm_client.generate(extraction_prompt)
+            response = self.llm_client.generate(extraction_prompt, max_tokens=16384)
 
             # Extract and parse JSON
             json_str = extract_json_array(response)
@@ -495,7 +495,7 @@ Now, please generate the structural triplets for {topic_name}.
 """
 
         try:
-            response = self.llm_client.generate(structural_prompt)
+            response = self.llm_client.generate(structural_prompt, max_tokens=16384)
 
             # Extract and parse JSON
             json_str = extract_json_array(response)

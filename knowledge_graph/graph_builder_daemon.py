@@ -6,7 +6,7 @@ import time
 import logging
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from setting.db import SessionLocal
@@ -27,7 +27,7 @@ class GraphBuildDaemon:
         self,
         llm_client: Optional[LLMInterface] = None,
         embedding_func=None,
-        check_interval: int = 30,
+        check_interval: int = 60,
         max_retries: int = 3,
     ):
         """
@@ -141,7 +141,12 @@ class GraphBuildDaemon:
         """
         earliest_task = (
             db.query(GraphBuildStatus)
-            .filter(GraphBuildStatus.status == "pending")
+            .filter(
+                or_(
+                    GraphBuildStatus.status == "pending",
+                    GraphBuildStatus.status == "processing",
+                )
+            )
             .order_by(GraphBuildStatus.scheduled_at.asc())
             .first()
         )
@@ -165,7 +170,10 @@ class GraphBuildDaemon:
             db.query(GraphBuildStatus)
             .filter(
                 and_(
-                    GraphBuildStatus.status == "pending",
+                    or_(
+                        GraphBuildStatus.status == "pending",
+                        GraphBuildStatus.status == "processing",
+                    ),
                     GraphBuildStatus.topic_name == topic_name,
                 )
             )
