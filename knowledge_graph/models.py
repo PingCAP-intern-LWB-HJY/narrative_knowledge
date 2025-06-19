@@ -143,7 +143,7 @@ class KnowledgeBlock(Base):
     )
     content = Column(LONGTEXT, nullable=True)
     context = Column(Text, nullable=True)
-    content_vec = Column(VectorType(1536), nullable=True)
+    content_vec = Column(VectorType(4096), nullable=True)
     hash = Column(
         String(64),
         nullable=False,
@@ -178,7 +178,7 @@ class Entity(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    description_vec = Column(VectorType(1536), nullable=True)
+    description_vec = Column(VectorType(4096), nullable=True)
     attributes = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=func.current_timestamp())
     updated_at = Column(
@@ -200,7 +200,7 @@ class Relationship(Base):
     source_entity_id = Column(String(36), ForeignKey("entities.id"), nullable=False)
     target_entity_id = Column(String(36), ForeignKey("entities.id"), nullable=False)
     relationship_desc = Column(Text, nullable=True)
-    relationship_desc_vec = Column(VectorType(1536), nullable=True)
+    relationship_desc_vec = Column(VectorType(4096), nullable=True)
     attributes = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=func.current_timestamp())
     updated_at = Column(
@@ -279,13 +279,19 @@ class GraphBuildStatus(Base):
     __tablename__ = "graph_build_status"
 
     topic_name = Column(String(255), primary_key=True, nullable=False)
-    source_id = Column(
-        String(36), ForeignKey("source_data.id"), primary_key=True, nullable=False
-    )
+    temp_token_id = Column(
+        String(36), primary_key=True, nullable=False
+    )  # Removed FK constraint for multi-db support
+    external_database_uri = Column(
+        String(512), nullable=False, default=""
+    )  # Track external database
+    storage_directory = Column(
+        String(512), nullable=True
+    )  # Directory path where document and metadata are stored
     status = Column(
-        Enum("pending", "processing", "completed", "failed"),
+        Enum("uploaded", "pending", "processing", "completed", "failed"),
         nullable=False,
-        default="pending",
+        default="uploaded",
     )
     created_at = Column(DateTime, default=func.current_timestamp())
     updated_at = Column(
@@ -297,15 +303,16 @@ class GraphBuildStatus(Base):
     error_message = Column(Text, nullable=True)
     progress_info = Column(JSON, nullable=True)  # Store build progress details
 
-    # Relationships
-    source_data = relationship("SourceData")
+    # Note: Removed source_data relationship due to multi-database support
+    # The source_data may exist in different databases
 
     __table_args__ = (
         Index("idx_graph_build_status_topic", "topic_name"),
-        Index("idx_graph_build_status_source", "source_id"),
+        Index("idx_graph_build_status_source", "temp_token_id"),
         Index("idx_graph_build_status_status", "status"),
         Index("idx_graph_build_status_created", "created_at"),
+        Index("idx_graph_build_status_external_db", "external_database_uri"),
     )
 
     def __repr__(self):
-        return f"<GraphBuildStatus(topic={self.topic_name}, source={self.source_id}, status={self.status})>"
+        return f"<GraphBuildStatus(topic={self.topic_name}, source={self.temp_token_id}, status={self.status})>"

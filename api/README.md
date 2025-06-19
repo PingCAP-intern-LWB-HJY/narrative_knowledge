@@ -1,20 +1,19 @@
-# Knowledge Graph API
+# Narrative Knowledge API
 
-This module provides a REST API for the Knowledge Graph system, enabling document upload, processing, and querying for knowledge graph building.
+This module provides a REST API for the Narrative Knowledge system, enabling document upload, processing, and querying for knowledge graph building.
 
 ## Quick Start
 
 ### 1. Install Dependencies
 
 ```bash
-poetry install
-pip install -r requirements-api.txt
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 2
 ```
 
 ### 2. Start the API Server
 
 ```bash
-python run_api.py
+poetry run python -m api.main
 ```
 
 The API will be available at `http://localhost:8000`
@@ -30,19 +29,34 @@ The API will be available at `http://localhost:8000`
 
 **POST** `/api/v1/knowledge/upload`
 
-Upload and process documents for knowledge graph building.
+Upload and process documents for knowledge graph building with batch support.
 
 **Parameters:**
 - `files`: One or more files (PDF, Markdown, TXT, SQL)
-- `doc_link`: Link to original document (required)
+- `links`: List of links to original documents (must match number of files)
+  - Recommended to use accessible links
+  - If not available, you can use custom unique addresses
+  - Must ensure uniqueness
 - `topic_name`: Topic name for knowledge graph building (required)
+- `database_uri`: Database connection string (optional, uses local if not provided)
 
-**Example using curl:**
+**Example using curl (single file):**
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/knowledge/upload" \
   -F "files=@document.pdf" \
-  -F "doc_link=https://docs.google.com/document/d/abc123" \
+  -F "links=https://docs.google.com/document/d/abc123" \
+  -F "topic_name=project-alpha"
+```
+
+**Example using curl (batch upload):**
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/knowledge/upload" \
+  -F "files=@document1.pdf" \
+  -F "files=@document2.md" \
+  -F "links=https://docs.google.com/document/d/abc123" \
+  -F "links=https://github.com/repo/readme" \
   -F "topic_name=project-alpha"
 ```
 
@@ -50,16 +64,26 @@ curl -X POST "http://localhost:8000/api/v1/knowledge/upload" \
 ```json
 {
   "status": "success",
-  "message": "Documents uploaded successfully",
+  "message": "Batch upload completed: 2/2 documents processed successfully",
   "data": {
-    "uploaded_count": 1,
+    "uploaded_count": 2,
+    "total_count": 2,
+    "success_rate": 1.0,
     "documents": [
       {
         "id": "cc5b92b6-ef73-4c4d-8b54-60c610d3443d",
-        "name": "document",
-        "file_path": "uploads/document/document.pdf",
+        "name": "document1",
+        "file_path": "uploads/project-alpha/document1/document1.pdf",
         "doc_link": "https://docs.google.com/document/d/abc123",
         "file_type": "pdf",
+        "status": "processed"
+      },
+      {
+        "id": "dd6c03c7-fg84-5d5e-9c65-71d721e4554e",
+        "name": "document2",
+        "file_path": "uploads/project-alpha/document2/document2.md",
+        "doc_link": "https://github.com/repo/readme",
+        "file_type": "markdown",
         "status": "processed"
       }
     ],
@@ -68,42 +92,54 @@ curl -X POST "http://localhost:8000/api/v1/knowledge/upload" \
 }
 ```
 
-**Example using python:**
+### Trigger Document Processing
 
-```python
-import requests
+**POST** `/api/v1/knowledge/trigger-processing`
 
-url = "http://localhost:8000/api/v1/knowledge/upload"
-file_path = "document.pdf"
+Manually trigger processing for documents in a specific topic.
 
-with open(file_path, 'rb') as f:
-    files = {'files': (file_path.split('/')[-1], f, 'application/pdf')}
-    data = {
-        'doc_link': "https://docs.google.com/document/d/abc123",
-        'topic_name': "project-alpha"
-    }
-    response = requests.post(url, files=files, data=data)
-    
-print(response.status_code)
-print(response.text)
-```
-
-### List Documents
-
-**GET** `/api/v1/knowledge/`
-
-Retrieve a list of documents with optional filtering and pagination.
-
-**Query Parameters:**
-- `topic_name`: Filter by topic name (exact match)
-- `name`: Filter by document name (partial match)
-- `doc_link`: Filter by original document link (exact match)
-- `limit`: Maximum results (default 20, max 100)
-- `offset`: Results offset (default 0)
+**Parameters:**
+- `topic_name`: Name of the topic to trigger processing for (required)
+- `database_uri`: Database URI to filter tasks (optional)
 
 **Example:**
 ```bash
-curl "http://localhost:8000/api/v1/knowledge/?topic_name=project-alpha&limit=10"
+curl -X POST "http://localhost:8000/api/v1/knowledge/trigger-processing" \
+  -F "topic_name=project-alpha"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Processing triggered for topic: project-alpha",
+  "data": {
+    "topic_name": "project-alpha",
+    "triggered_count": 2,
+    "total_documents": 2
+  }
+}
+```
+
+### List Topics
+
+**GET** `/api/v1/knowledge/topics`
+
+Retrieve a list of all topics with their processing status summary.
+
+**Query Parameters:**
+- `database_uri`: Filter topics by database URI (optional)
+  - Empty string or not provided: Local database topics
+  - Specific URI: External database topics
+
+**Example:**
+```bash
+curl "http://localhost:8000/api/v1/knowledge/topics"
+```
+
+**Example with database filter:**
+```bash
+curl "http://localhost:8000/api/v1/knowledge/topics?database_uri=postgresql://user:pass@host:5432/db"
 ```
 
 **Response:**
@@ -111,63 +147,36 @@ curl "http://localhost:8000/api/v1/knowledge/?topic_name=project-alpha&limit=10"
 {
   "status": "success",
   "data": {
-    "documents": [
+    "topics": [
       {
-        "id": "cc5b92b6-ef73-4c4d-8b54-60c610d3443d",
-        "name": "document",
-        "doc_link": "https://docs.google.com/document/d/abc123",
-        "file_type": "pdf",
-        "content_preview": "This document contains information about...",
-        "created_at": "2024-01-15T10:30:00",
-        "updated_at": "2024-01-15T10:30:00",
-        "build_statuses": [
-          {
-            "topic_name": "project-alpha",
-            "status": "completed",
-            "created_at": "2024-01-15T10:30:00",
-            "updated_at": "2024-01-15T10:35:00",
-            "error_message": null
-          }
-        ],
-        "graph_elements": {
-          "entities": [
-            {
-              "id": "entity-123",
-              "name": "Project Alpha",
-              "description": "Main project entity"
-            }
-          ],
-          "relationships": [
-            {
-              "id": "rel-456",
-              "name": "entity-123 -> entity-789",
-              "description": "Project relationship"
-            }
-          ]
-        }
+        "topic_name": "project-alpha",
+        "total_documents": 5,
+        "uploaded_count": 5,
+        "pending_count": 1,
+        "processing_count": 0,
+        "completed_count": 3,
+        "failed_count": 1,
+        "latest_update": "2024-01-15T10:35:00",
+        "database_uri": ""
+      },
+      {
+        "topic_name": "project-beta",
+        "total_documents": 3,
+        "uploaded_count": 3,
+        "pending_count": 0,
+        "processing_count": 1,
+        "completed_count": 2,
+        "failed_count": 0,
+        "latest_update": "2024-01-15T11:20:00",
+        "database_uri": "postgresql://user:pass@host:5432/external_db"
       }
     ],
-    "total": 1,
-    "limit": 10,
-    "offset": 0,
-    "has_more": false
+    "total_topics": 2,
+    "filter_database_uri": null,
+    "source": "local_database"
   }
 }
 ```
-
-### Get Document Details
-
-**GET** `/api/v1/knowledge/{document_id}`
-
-Retrieve detailed information about a specific document.
-
-**Example:**
-```bash
-curl "http://localhost:8000/api/v1/knowledge/cc5b92b6-ef73-4c4d-8b54-60c610d3443d"
-```
-
-**Response:**
-Same structure as individual document in the list response above.
 
 ## Configuration
 
@@ -178,8 +187,39 @@ Same structure as individual document in the list response above.
 - SQL (`.sql`) → code
 
 ### File Size Limits
-- Maximum file size: 10MB per file
+- Maximum total file size for batch upload: 30MB
+- Individual file size limit: 30MB
 
-### Required Metadata for upload file
-- **doc_link**: Link to the original document (required)
-- **topic_name**: Topic name for knowledge graph building (required)
+### Document Storage
+Documents are stored in a versioned directory structure:
+- Base path: `uploads/<topic_name>/<filename>/`
+- Each document directory contains:
+  - The original file
+  - `document_metadata.json` with document information
+- If a document with the same metadata exists, it will reuse the existing directory
+- If a document with different metadata exists, a new versioned directory will be created (e.g., `filename_v2/`)
+
+## Error Handling
+
+The API uses standardized error responses for all endpoints:
+
+**HTTP Error Response:**
+```json
+{
+  "error": {
+    "code": "HTTP_ERROR",
+    "message": "Error message here",
+    "status_code": 400
+  }
+}
+```
+
+**Internal Error Response:**
+```json
+{
+  "error": {
+    "code": "INTERNAL_ERROR",
+    "message": "An unexpected error occurred"
+  }
+}
+```

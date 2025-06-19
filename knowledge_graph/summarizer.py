@@ -1,6 +1,7 @@
 import json
 import logging
 from typing import Dict, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from knowledge_graph.models import DocumentSummary
 from utils.json_utils import extract_json
@@ -16,14 +17,22 @@ class DocumentSummarizer:
     Summaries are cached in database to avoid recomputation.
     """
 
-    def __init__(self, llm_client: LLMInterface):
+    def __init__(
+        self,
+        llm_client: LLMInterface,
+        session_factory=None,
+        worker_count: int = 3,
+    ):
         """
         Initialize the document summarizer.
 
         Args:
             llm_client: LLM interface for generating summaries
+            session_factory: Database session factory. If None, uses default SessionLocal.
         """
         self.llm_client = llm_client
+        self.SessionLocal = session_factory or SessionLocal
+        self.worker_count = worker_count
 
     def get_or_create_summary(
         self, topic_name: str, document: Dict, force_regenerate: bool = False
@@ -39,7 +48,7 @@ class DocumentSummarizer:
         Returns:
             DocumentSummary object
         """
-        with SessionLocal() as db:
+        with self.SessionLocal() as db:
             # Check for existing summary
             logger.info(
                 f"Checking for existing summary for document: {document['source_name']}"
@@ -74,7 +83,7 @@ class DocumentSummarizer:
             )
             raise e
 
-        with SessionLocal() as db:
+        with self.SessionLocal() as db:
 
             if existing_summary:
                 # Update existing summary
@@ -115,7 +124,7 @@ class DocumentSummarizer:
         self, topic_name: str, documents: List[Dict], force_regenerate: bool = False
     ) -> List[DocumentSummary]:
         """
-        Generate summaries for a batch of documents.
+        Generate summaries for a batch of documents in parallel.
 
         Args:
             topic_name: Topic to focus summaries on
@@ -123,23 +132,82 @@ class DocumentSummarizer:
             force_regenerate: Whether to regenerate existing summaries
 
         Returns:
-            List of DocumentSummary objects
+            List of DocumentSummary objects for successfully processed documents
         """
+        if not documents:
+            return []
+
         summaries = []
-        for doc in documents:
+        errors = []
+
+        def process_document(doc_with_index):
+            """Worker function to process a single document."""
+            index, doc = doc_with_index
             try:
                 summary = self.get_or_create_summary(topic_name, doc, force_regenerate)
-                summaries.append(summary)
+                return index, summary, None
             except Exception as e:
-                logger.error(
-                    f"Failed to generate summary for {doc['source_name']}: {e}",
-                    exc_info=True,
-                )
-                raise RuntimeError(
-                    f"Failed to generate summary for {doc['source_name']}: {e}"
-                )
+                error_msg = f"Failed to generate summary for {doc['source_name']}: {e}"
+                logger.error(error_msg, exc_info=True)
+                return index, None, error_msg
 
-        logger.info(f"Generated {len(summaries)} summaries for topic: {topic_name}")
+        # Create list of documents with their original indices to maintain order
+        indexed_documents = list(enumerate(documents))
+
+        logger.info(
+            f"Starting parallel summarization of {len(documents)} documents using {self.worker_count} workers"
+        )
+
+        with ThreadPoolExecutor(max_workers=self.worker_count) as executor:
+            # Submit all documents for processing
+            future_to_doc = {
+                executor.submit(process_document, doc_with_index): doc_with_index[1]
+                for doc_with_index in indexed_documents
+            }
+
+            # Collect results as they complete
+            results = [None] * len(documents)  # Pre-allocate to maintain order
+            completed_count = 0
+
+            for future in as_completed(future_to_doc):
+                doc = future_to_doc[future]
+                completed_count += 1
+                try:
+                    index, summary, error = future.result()
+                    if error:
+                        errors.append(error)
+                        logger.warning(
+                            f"Document processing failed ({completed_count}/{len(documents)}): {doc['source_name']}"
+                        )
+                    else:
+                        results[index] = summary
+                        logger.info(
+                            f"Document processed successfully ({completed_count}/{len(documents)}): {doc['source_name']}"
+                        )
+                except Exception as e:
+                    error_msg = f"Unexpected error processing {doc['source_name']}: {e}"
+                    errors.append(error_msg)
+                    logger.error(error_msg, exc_info=True)
+
+        # Filter out None values (failed documents) while maintaining order
+        summaries = [result for result in results if result is not None]
+
+        # Log final results
+        success_count = len(summaries)
+        failure_count = len(errors)
+
+        if errors:
+            logger.warning(
+                f"Batch summarization completed with {failure_count} failures:"
+            )
+            for error in errors:
+                logger.warning(f"  - {error}")
+
+            raise RuntimeError(
+                f"Failed to generate summaries for {failure_count}/{len(documents)} documents"
+            )
+
+        logger.info(f"Generated {success_count} summaries for topic: {topic_name}")
         return summaries
 
     def _generate_document_summary(self, topic_name: str, document: Dict) -> Dict:
@@ -213,11 +281,11 @@ Return only the JSON, no other text."""
 
             return summary_data
 
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM response as JSON: {e}", exc_info=True)
-            raise e
         except Exception as e:
-            logger.error(f"Error generating summary: {e}", exc_info=True)
+            logger.error(
+                f"Error generating summary: {e}, json string {json_str}",
+                exc_info=True,
+            )
             raise e
 
     def get_summaries_for_topic(self, topic_name: str) -> List[DocumentSummary]:
