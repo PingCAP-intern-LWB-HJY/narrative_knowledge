@@ -59,7 +59,9 @@ class NarrativeKnowledgeGraphBuilder:
             )
             if quality_standard_path.exists():
                 with open(quality_standard_path, "r", encoding="utf-8") as f:
-                    return f.read()
+                    quality_standard = f.read()
+                    logger.info(f"Loaded quality standard from {quality_standard_path}, standard: {quality_standard}")
+                    return quality_standard
             else:
                 logger.warning(
                     f"Quality standard file not found at {quality_standard_path}"
