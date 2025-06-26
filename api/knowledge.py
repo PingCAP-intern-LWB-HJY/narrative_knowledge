@@ -258,7 +258,7 @@ def _save_uploaded_file_with_metadata(
                         ):
                             # Found matching metadata in file system, check for existing temp_token_id
                             existing_temp_token = existing_metadata.get("temp_token_id")
-                            if existing_temp_token:
+                            if existing_temp_token == temp_token_id:
                                 logger.info(
                                     f"Found existing metadata file with matching temp_token_id: {existing_temp_token} in directory: {check_dir}"
                                 )
