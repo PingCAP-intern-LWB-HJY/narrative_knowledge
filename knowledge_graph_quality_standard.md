@@ -36,6 +36,14 @@ A high-quality knowledge graph must adhere to the following five core principles
 - **Non-Contradictory**: Attribute values within the same entity must not conflict with one another.
 - **Consistent Format**: The naming and value structure of attributes should follow a unified, standardized format.
 - **Relevant Metadata**: Where applicable, should include metadata such as provenance, confidence scores, or update timestamps.
+- **Entity Type (Highly Recommended)**: To enhance LLM reasoning, entities SHOULD include classification attributes.
+    - **`entity_type`**: A mandatory classification from a predefined enumeration (e.g., `Person`, `Concept`, `Technology`).
+    - **`domain`**: A standardized domain label (e.g., `database`, `finance`).
+- **Search Enhancement (Highly Recommended)**: To improve retrieval accuracy, entities SHOULD include search-related attributes.
+    - **`searchable_keywords`**: An array of domain-specific terms and synonyms.
+    - **`aliases`**: An array of alternative names or abbreviations.
+- **Contextual Information (Optional)**: For richer understanding, entities MAY include supplementary details.
+    - **`usage_context`**: A natural language description of primary use cases.
 
 ---
 
@@ -60,6 +68,12 @@ The attributes of a relationship provide structured metadata and context for the
 - **Relationship Type**: An atomic classification label for the relationship (e.g., `develops`, `acquires`, `uses`) **can be stored as an optional attribute** for fast filtering or classification, but it does not carry the core semantic meaning.
     - **Example**: `attributes: { "type": "develops" }`
 - **Strength/Confidence Indicators**: May include quantitative or qualitative attributes to indicate the importance or certainty of the relationship.
+- **Contextual Conditions (Highly recommended, if available.)**: To clarify the relationship's applicability for LLMs, attributes SHOULD describe its context.
+    - **`condition`**: A natural language description of circumstances under which the relationship holds.
+    - **`scope`**: A natural language description of the applicable range or context (e.g., versioning, environment).
+- **Execution Context (Optional)**: For deeper insight, attributes MAY provide details about the relationship's manifestation.
+    - **`prerequisite`**: A natural language description of required preconditions.
+    - **`impact`**: A natural language description of the effects or consequences.
 
 ### 3. Specific Specification for Relationship Attributes: Temporal Information
 To ensure the accuracy, consistency, and computability of temporal information, attributes related to time in a relationship must follow this **mandatory specification**:

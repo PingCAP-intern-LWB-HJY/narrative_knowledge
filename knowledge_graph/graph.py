@@ -60,7 +60,9 @@ class NarrativeKnowledgeGraphBuilder:
             if quality_standard_path.exists():
                 with open(quality_standard_path, "r", encoding="utf-8") as f:
                     quality_standard = f.read()
-                    logger.info(f"Loaded quality standard from {quality_standard_path}, standard: {quality_standard}")
+                    logger.info(
+                        f"Loaded quality standard from {quality_standard_path}, standard: {quality_standard}"
+                    )
                     return quality_standard
             else:
                 logger.warning(
@@ -398,7 +400,11 @@ Return a JSON array of enhanced triplets (surround with ```json and ```):
             "name": "Entity name",
             "description": "What IS this entity? Focus on intrinsic properties and characteristics.",
             "attributes": {{
-                "entity_type": "Person|Organization|System|Concept|Event|Process"
+                "entity_type": "A specific and concise type for the entity, determined by LLM (e.g., 'Company', 'Software Framework', 'API Endpoint').",
+                "domain": "Standardized domain label (e.g., 'database', 'finance').",
+                "searchable_keywords": ["keyword1", "keyword2"],
+                "aliases": ["alternative_name1"],
+                "usage_context": "Natural language description of primary use cases."
             }}
         }},
         "predicate": "Rich narrative describing HOW entities interact with full context",
@@ -406,13 +412,21 @@ Return a JSON array of enhanced triplets (surround with ```json and ```):
             "name": "Entity name", 
             "description": "What IS this entity? Focus on intrinsic properties and characteristics.",
             "attributes": {{
-                "entity_type": "Person|Organization|System|Concept|Event|Process"
+                "entity_type": "A specific and concise type for the entity, determined by LLM (e.g., 'Company', 'Software Framework', 'API Endpoint').",
+                "domain": "Standardized domain label (e.g., 'database', 'finance').",
+                "searchable_keywords": ["keyword1", "keyword2"],
+                "aliases": ["alternative_name1"],
+                "usage_context": "Natural language description of primary use cases."
             }}
         }},
         "relationship_attributes": {{
             "fact_time": "ISO 8601 UTC timestamp for single point events (e.g., '2025-06-25T11:30:00Z') OR",
             "fact_time_range": {{"start": "ISO timestamp", "end": "ISO timestamp or null"}} for time ranges,
             "time_expression": "original time expression from source text for evidence traceability",
+            "condition": "(if available) Natural language description of circumstances under which the relationship holds.",
+            "scope": "(if available). Natural language description of the applicable range or context (e.g., versioning, environment).",
+            "prerequisite": "Optional. A natural language description of required preconditions.",
+            "impact": "Optional. A natural language description of the effects or consequences.",
             "sentiment": "positive|negative|neutral",
             "confidence": "high|medium|low based on evidence strength"
         }}
@@ -600,7 +614,11 @@ Return a JSON object with your reasoning discoveries in the following format (su
                 "name": "Entity name",
                 "description": "What IS this entity? (intrinsic properties only)",
                 "attributes": {{
-                    "entity_type": "Organization|Person|System|Concept|Event|Process"
+                    "entity_type": "A specific and concise type for the entity, determined by LLM (e.g., 'Company', 'Software Framework').",
+                    "domain": "Standardized domain label (e.g., 'database', 'finance').",
+                    "searchable_keywords": ["keyword1", "keyword2"],
+                    "aliases": ["alternative_name1"],
+                    "usage_context": "Natural language description of primary use cases."
                 }},
                 "requires_description_update": true/false,
                 "update_justification": "Explanation if description needs updating"
@@ -610,7 +628,11 @@ Return a JSON object with your reasoning discoveries in the following format (su
                 "name": "Entity name",
                 "description": "What IS this entity? (intrinsic properties only)",
                 "attributes": {{
-                    "entity_type": "Person|Organization|System|Concept|Event|Process"
+                    "entity_type": "A specific and concise type for the entity, determined by LLM (e.g., 'Company', 'Software Framework').",
+                    "domain": "Standardized domain label (e.g., 'database', 'finance').",
+                    "searchable_keywords": ["keyword1", "keyword2"],
+                    "aliases": ["alternative_name1"],
+                    "usage_context": "Natural language description of primary use cases."
                 }},
                 "requires_description_update": true/false,
                 "update_justification": "Explanation if description needs updating"
@@ -619,9 +641,13 @@ Return a JSON object with your reasoning discoveries in the following format (su
                 "fact_time": "ISO 8601 UTC timestamp for single point events (e.g., '2025-06-25T11:30:00Z') OR",
                 "fact_time_range": {{"start": "ISO timestamp", "end": "ISO timestamp or null"}} for time ranges,
                 "time_expression": "original time expression from source text for evidence traceability",
+                "condition": "(if available) Inferred condition under which the relationship holds.",
+                "scope": "(if available) Inferred applicable scope for the relationship.",
+                "prerequisite": "Optional. Inferred preconditions for the relationship.",
+                "impact": "Optional. Inferred impact or consequences of the relationship.",
                 "sentiment": "positive|negative|neutral",
                 "confidence": "high|medium|low",
-                "justification": "Clear explanation of reasoning process with reference to supporting evidence in the text",
+                "justification": "Clear explanation of reasoning process with reference to supporting evidence in the text"
             }}
         }}
     ]
