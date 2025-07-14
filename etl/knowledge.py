@@ -6,7 +6,6 @@ from typing import Dict, Any, List
 from knowledge_graph.models import (
     SourceData,
     ContentStore,
-    GraphBuild,
     KnowledgeBlock,
     BlockSourceMapping,
 )
@@ -15,7 +14,7 @@ from knowledge_graph.parser.base import Block
 from knowledge_graph.situate_context import gen_situate_context
 from setting.db import SessionLocal
 from etl.extract import extract_source_data
-from utils.token import encode_text, decode_tokens
+from utils.token import encode_text
 from llm.factory import LLMInterface
 from setting.base import MAX_PROMPT_TOKENS
 

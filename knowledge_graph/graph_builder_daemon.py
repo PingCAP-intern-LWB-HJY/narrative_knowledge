@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from setting.db import SessionLocal, db_manager
 from knowledge_graph.models import GraphBuild, SourceData
 from knowledge_graph.graph_builder import KnowledgeGraphBuilder
-from knowledge_graph.knowledge import KnowledgeBuilder
+from etl.knowledge import KnowledgeBuilder
 from llm.factory import LLMInterface
 from llm.embedding import get_text_embedding
 

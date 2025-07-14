@@ -14,7 +14,7 @@ from knowledge_graph.models import (
     ContentStore,
     GraphBuild,
 )
-from knowledge_graph.knowledge import KnowledgeBuilder
+from etl.knowledge import KnowledgeBuilder
 from knowledge_graph.graph import NarrativeKnowledgeGraphBuilder
 from setting.db import db_manager
 from llm.factory import LLMInterface
