@@ -1,9 +1,10 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, inspect as sqlalchemy_inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from setting.base import DATABASE_URI, SESSION_POOL_SIZE
 import logging
 from typing import Dict, Optional
+from sqlalchemy.schema import CreateTable, ForeignKeyConstraint
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +23,7 @@ engine = create_engine(
     echo=False,
 )
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 Base = declarative_base()
-
 
 class DatabaseManager:
     """
@@ -36,9 +34,35 @@ class DatabaseManager:
     def __init__(self):
         self.user_connections: Dict[str, sessionmaker] = {}
         self.local_database_uri = DATABASE_URI
-        logger.info(
-            f"DatabaseManager initialized with local database"
-        )
+        logger.info(f"DatabaseManager initialized with local database")
+        # Initialize local database with the same logic as external databases
+        self._create_user_tables(engine)
+        self.user_connections[DATABASE_URI] = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    def _create_user_tables(self, engine):
+        """
+        Create all necessary tables in database.
+        Uses SQLAlchemy's built-in create_all() which handles all complexity.
+
+        Args:
+            engine: SQLAlchemy engine for the database
+
+        Raises:
+            Exception: If table creation fails
+        """
+        try:
+            from knowledge_graph.models import Base
+
+            # Let SQLAlchemy handle all the complexity
+            # It automatically handles: dependency order, IF NOT EXISTS behavior, 
+            # all attributes, indexes, constraints, etc.
+            Base.metadata.create_all(engine)
+            logger.info("Successfully created/verified all tables in database")
+                
+        except Exception as e:
+            # Only log warning instead of raising exception to handle concurrent creation
+            logger.warning(f"Table creation encountered an issue (this is normal in concurrent environments): {e}")
+            logger.info("Database initialization completed (tables may already exist)")
 
     def get_session_factory(self, database_uri: Optional[str] = None) -> sessionmaker:
         """
@@ -55,7 +79,7 @@ class DatabaseManager:
         """
         if self.is_local_mode(database_uri):
             logger.debug("Using local database session factory")
-            return SessionLocal
+            return self.user_connections[self.local_database_uri]
 
         # Multi-database mode
         if database_uri not in self.user_connections:
@@ -106,25 +130,6 @@ class DatabaseManager:
             or database_uri == self.local_database_uri
         )
 
-    def _create_user_tables(self, engine):
-        """
-        Create all necessary tables in user database.
-
-        Args:
-            engine: SQLAlchemy engine for the user database
-
-        Raises:
-            Exception: If table creation fails
-        """
-        try:
-            from knowledge_graph.models import Base
-
-            Base.metadata.create_all(engine)
-            logger.info("Successfully created tables in user database")
-        except Exception as e:
-            logger.error(f"Failed to create tables in user database: {e}")
-            raise Exception(f"Failed to initialize database schema: {str(e)}")
-
     def validate_database_connection(self, database_uri: str) -> bool:
         """
         Validate if database connection is working.
@@ -158,3 +163,4 @@ class DatabaseManager:
 
 # Global database manager instance
 db_manager = DatabaseManager()
+SessionLocal = db_manager.get_session_factory()

@@ -342,11 +342,21 @@ Generate the global blueprint for "{topic_name}"."""
         Each triplet includes rich entity descriptions and temporal information indicating when facts occurred.
         """
 
+        processing_instructions = blueprint.processing_instructions
         # Extract global context from blueprint
-        global_context = blueprint.processing_items
-        canonical_entities = global_context.get("canonical_entities", {})
-        key_patterns = global_context.get("key_patterns", {})
-        global_timeline = global_context.get("global_timeline", [])
+        global_context = ""
+        if blueprint.processing_items:
+            canonical_entities = blueprint.processing_items.get(
+                "canonical_entities", {}
+            )
+            key_patterns = blueprint.processing_items.get("key_patterns", {})
+            global_timeline = blueprint.processing_items.get("global_timeline", [])
+
+            global_context = f"""**Global Blueprint:**
+- Canonical Entities: {json.dumps(canonical_entities, indent=2, ensure_ascii=False)}
+- Key Patterns: {json.dumps(key_patterns, indent=2, ensure_ascii=False)}  
+- Global Timeline: {json.dumps(global_timeline, indent=2, ensure_ascii=False)}
+"""
 
         # Extract document context from cognitive map (if available)
         cognitive_context = ""
@@ -367,12 +377,10 @@ Generate the global blueprint for "{topic_name}"."""
         extraction_prompt = f"""You are an expert knowledge extractor working on {topic_name} documents.
 
 **Global Blueprint (Cross-Document Context):**
-- Canonical Entities: {json.dumps(canonical_entities, indent=2, ensure_ascii=False)}
-- Key Patterns: {json.dumps(key_patterns, indent=2, ensure_ascii=False)}  
-- Global Timeline: {json.dumps(global_timeline, indent=2, ensure_ascii=False)}
+{global_context}
 
 **Processing Instructions:**
-{blueprint.processing_instructions}
+{processing_instructions}
 
 **Document Cognitive Map:**
 {cognitive_context}
@@ -422,7 +430,7 @@ Return a JSON array of enhanced triplets (surround with ```json and ```):
         "relationship_attributes": {{
             "fact_time": "ISO 8601 UTC timestamp for single point events (e.g., '2025-06-25T11:30:00Z') OR",
             "fact_time_range": {{"start": "ISO timestamp", "end": "ISO timestamp or null"}} for time ranges,
-            "time_expression": "original time expression from source text for evidence traceability",
+            "temporal_context": "The valid time frame for the relationship. This could be a specific date, a time range from source text for evidence traceability",
             "condition": "(if available) Natural language description of circumstances under which the relationship holds.",
             "scope": "(if available). Natural language description of the applicable range or context (e.g., versioning, environment).",
             "prerequisite": "Optional. A natural language description of required preconditions.",
@@ -536,12 +544,14 @@ Now, please generate the narrative triplets for {topic_name} in valid JSON forma
         # Global blueprint context (if available)
         if blueprint:
             context_parts.append("**Global Blueprint Context:**")
-            context_parts.append(
-                f"- Processing Instructions: {blueprint.processing_instructions}"
-            )
-            context_parts.append(
-                f"- Processing Items: {json.dumps(blueprint.processing_items, indent=2, ensure_ascii=False)}"
-            )
+            if blueprint.processing_instructions:
+                context_parts.append(
+                    f"- Processing Instructions: {blueprint.processing_instructions}"
+                )
+            if blueprint.processing_items:
+                context_parts.append(
+                    f"- Processing Items: {json.dumps(blueprint.processing_items, indent=2, ensure_ascii=False)}"
+                )
             context_parts.append("")
 
         # Document cognitive map context (if available)
@@ -566,14 +576,14 @@ Now, please generate the narrative triplets for {topic_name} in valid JSON forma
                 context_parts.append("- Entities:")
                 for entity in existing_knowledge["existing_entities"]:
                     context_parts.append(
-                        f"  * {entity['name']}: {entity['description']}"
+                        f"  * {entity['name']}: {entity['description']} | attributes: {entity['attributes']}"
                     )
 
             if existing_knowledge["existing_relationships"]:
                 context_parts.append("- Relationships:")
                 for rel in existing_knowledge["existing_relationships"]:
                     context_parts.append(
-                        f"  * {rel['source_entity']['name']} -> {rel['relationship_desc']} -> {rel['target_entity']['name']}"
+                        f"  * {rel['source_entity']['name']} -> {rel['relationship_desc']} -> {rel['target_entity']['name']} | attributes: {rel['attributes']}"
                     )
             context_parts.append("")
 
@@ -640,7 +650,7 @@ Return a JSON object with your reasoning discoveries in the following format (su
             "relationship_attributes": {{
                 "fact_time": "ISO 8601 UTC timestamp for single point events (e.g., '2025-06-25T11:30:00Z') OR",
                 "fact_time_range": {{"start": "ISO timestamp", "end": "ISO timestamp or null"}} for time ranges,
-                "time_expression": "original time expression from source text for evidence traceability",
+                "temporal_context": "The valid time frame for the relationship. This could be a specific date, a time range from source text for evidence traceability",
                 "condition": "(if available) Inferred condition under which the relationship holds.",
                 "scope": "(if available) Inferred applicable scope for the relationship.",
                 "prerequisite": "Optional. Inferred preconditions for the relationship.",

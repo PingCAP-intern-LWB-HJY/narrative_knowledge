@@ -169,7 +169,17 @@ class KnowledgeBlock(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String(512), nullable=False)
     knowledge_type = Column(
-        Enum("qa", "paragraph", "synopsis", "image", "video", "code"), nullable=False
+        Enum(
+            "qa",
+            "paragraph",
+            "synopsis",
+            "image",
+            "video",
+            "code",
+            "chat_summary",
+            "chat_content",
+        ),
+        nullable=False,
     )
     content = Column(LONGTEXT, nullable=True)
     context = Column(Text, nullable=True)
@@ -265,7 +275,7 @@ class AnalysisBlueprint(Base):
 
     # All blueprint data stored as JSON for maximum flexibility
     processing_items = Column(
-        JSON, nullable=False
+        JSON, nullable=True
     )  # canonical_entities, key_patterns, global_timeline, etc.
     processing_instructions = Column(
         Text, nullable=True
@@ -313,13 +323,13 @@ class DocumentSummary(Base):
         return f"<DocumentSummary(doc_id={self.document_id}, topic={self.topic_name})>"
 
 
-class GraphBuildStatus(Base):
+class GraphBuild(Base):
     """Graph build status tracking for each topic-source combination"""
 
-    __tablename__ = "graph_build_status"
+    __tablename__ = "graph_build"
 
     topic_name = Column(String(255), primary_key=True, nullable=False)
-    temp_token_id = Column(String(64), primary_key=True, nullable=False)
+    build_id = Column(String(64), primary_key=True, nullable=False)
     external_database_uri = Column(
         String(512), nullable=False, default=""
     )  # Track external database
@@ -349,7 +359,7 @@ class GraphBuildStatus(Base):
 
     __table_args__ = (
         Index("idx_graph_build_status_topic", "topic_name"),
-        Index("idx_graph_build_status_source", "temp_token_id"),
+        Index("idx_graph_build_status_source", "build_id"),
         Index("idx_graph_build_status_status", "status"),
         Index("idx_graph_build_status_created", "created_at"),
         Index("idx_graph_build_status_external_db", "external_database_uri"),
@@ -358,4 +368,4 @@ class GraphBuildStatus(Base):
     )
 
     def __repr__(self):
-        return f"<GraphBuildStatus(topic={self.topic_name}, source={self.temp_token_id}, status={self.status})>"
+        return f"<GraphBuild(topic={self.topic_name}, source={self.build_id}, status={self.status})>"
