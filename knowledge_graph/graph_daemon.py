@@ -243,6 +243,15 @@ class KnowledgeGraphDaemon:
             logger.error(f"Knowledge graph building failed for topic {topic_name}: {str(e)}", exc_info=True)
             raise
 
+        try:
+            result = graph_builder.enhance_knowledge_graph(topic_name, extracted_sources)
+            logger.info(f"Successfully enhanced knowledge graph for topic: {topic_name}")
+            logger.info(f"Enhancement results: {result}")
+        except Exception as e:
+            logger.error(f"Failed to enhance knowledge graph: {e}", exc_info=True)
+            raise
+
+
     def get_daemon_status(self) -> Dict:
         """
         Get current daemon status and statistics.
