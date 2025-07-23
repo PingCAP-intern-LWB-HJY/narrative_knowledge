@@ -147,7 +147,7 @@ async def _handle_form_data(
 
     # Dispatch based on target_type for form-data
     if target_type == "knowledge_graph":
-        return await _process_file_for_knowledge_graph(file, metadata, process_strategy)
+        return await _process_file_for_knowledge_graph(file, metadata, process_strategy or {})
     else:
         raise HTTPException(
             status_code=400,
@@ -239,7 +239,17 @@ async def save_data(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="For multipart/form-data, 'file', 'metadata', and 'target_type' are required.",
             )
-        return await _handle_form_data(file, metadata, target_type, process_strategy)
+        # Parse process_strategy from string to dict if provided
+        parsed_process_strategy = None
+        if process_strategy:
+            try:
+                parsed_process_strategy = json.loads(process_strategy)
+            except json.JSONDecodeError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid JSON in process_strategy.",
+                )
+        return await _handle_form_data(file, metadata, target_type, parsed_process_strategy)
     elif "application/json" in content_type:
         return await _handle_json_data(request)
     else:

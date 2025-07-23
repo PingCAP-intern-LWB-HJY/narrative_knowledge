@@ -1,10 +1,8 @@
-from sqlalchemy import create_engine, text, inspect as sqlalchemy_inspect
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from setting.base import DATABASE_URI, SESSION_POOL_SIZE
 import logging
 from typing import Dict, Optional
-from sqlalchemy.schema import CreateTable, ForeignKeyConstraint
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +21,7 @@ engine = create_engine(
     echo=False,
 )
 
-Base = declarative_base()
+# Base = declarative_base()
 
 class DatabaseManager:
     """

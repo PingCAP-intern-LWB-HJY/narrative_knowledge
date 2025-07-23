@@ -131,7 +131,7 @@ def _save_file_and_metadata(
     file: UploadFile,
     metadata: DocumentMetadata,
     base_dir: Path,
-    build_id: str = None,
+    build_id: Optional[str] = None,
 ) -> None:
     """
     Helper function to save file and metadata to directory.
@@ -146,7 +146,8 @@ def _save_file_and_metadata(
     base_dir.mkdir(parents=True, exist_ok=True)
 
     # Save the uploaded file
-    file_path = base_dir / file.filename
+    filename = file.filename or "unknown"
+    file_path = base_dir / filename
     with open(file_path, "wb") as buffer:
         content = file.file.read()
         buffer.write(content)
@@ -188,7 +189,7 @@ def _save_uploaded_file_with_metadata(
     try:
         _ensure_upload_dir()
 
-        filename = file.filename
+        filename = file.filename or "unknown"
         base_name = Path(filename).stem
         base_dir = UPLOAD_DIR / metadata.topic_name / base_name
 
@@ -198,7 +199,7 @@ def _save_uploaded_file_with_metadata(
             if db_manager.is_local_mode(metadata.database_uri)
             else metadata.database_uri
         )
-        build_id = _generate_build_id(metadata.doc_link, external_db_uri)
+        build_id = _generate_build_id(metadata.doc_link, external_db_uri or "")
 
         # Check if GraphBuild already exists for this build_id
         # This is sufficient since build_id uniquely identifies doc_link + database_uri

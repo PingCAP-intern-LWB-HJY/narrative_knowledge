@@ -164,7 +164,7 @@ async def retrieve_memory(request: MemoryRetrieveRequest) -> JSONResponse:
         results = memory_system.retrieve_user_memory(
             query=request.query,
             user_id=request.user_id,
-            memory_types=request.memory_types,
+            memory_types=request.memory_types or ["conversation", "insights"],
             time_range=request.time_range,
             top_k=request.top_k,
         )
