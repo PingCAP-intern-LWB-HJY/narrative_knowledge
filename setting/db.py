@@ -84,6 +84,8 @@ class DatabaseManager:
         # Multi-database mode
         if database_uri not in self.user_connections:
             logger.info(f"Creating new connection for external database")
+            if database_uri is None:
+                raise ValueError("database_uri cannot be None when creating a new engine.")
             try:
                 engine = create_engine(
                     database_uri,
@@ -154,7 +156,7 @@ class DatabaseManager:
         """Close all user database connections."""
         for database_uri, session_factory in self.user_connections.items():
             try:
-                session_factory.bind.dispose()
+                session_factory.close_all()
                 logger.info(f"Closed connection for database: {database_uri[:50]}...")
             except Exception as e:
                 logger.error(f"Error closing connection: {e}")

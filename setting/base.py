@@ -18,8 +18,8 @@ EMBEDDING_BASE_URL = os.environ.get("EMBEDDING_BASE_URL", "http://localhost:1143
 EMBEDDING_MODEL_API_KEY = os.environ.get("EMBEDDING_MODEL_API_KEY", "ollama")
 
 # DB settings
-DATABASE_URI = os.environ.get("DATABASE_URI")
-SESSION_POOL_SIZE: int = os.environ.get("SESSION_POOL_SIZE", 40)
+DATABASE_URI = os.environ.get("DATABASE_URI","mysql+pymysql://2v2WvLxTSjY5adC.root:2rA6B5Zc98PgMqNH@gateway01.ap-southeast-1.prod.alicloud.tidbcloud.com:4000/test?ssl_ca=/etc/ssl/cert.pem&ssl_verify_cert=true&ssl_verify_identity=true")
+SESSION_POOL_SIZE: int = int(os.environ.get("SESSION_POOL_SIZE", 40))
 MAX_PROMPT_TOKENS = 40960
 
 
