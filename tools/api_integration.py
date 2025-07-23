@@ -8,8 +8,6 @@ to use the tool-based pipeline system as described in the design document.
 import logging
 from typing import Dict, Any, List, Optional
 from pathlib import Path
-import tempfile
-import os
 import uuid
 
 from tools.orchestrator import PipelineOrchestrator
@@ -30,14 +28,14 @@ class PipelineAPIIntegration:
         self.orchestrator = PipelineOrchestrator(session_factory)
         self.logger = logging.getLogger(__name__)
     
-    def process_request(self, request_data: Dict[str, Any], files: List[Dict[str, Any]], 
+    def process_request(self, request_data: Dict[str, Any], files: List[Dict[str, Any]] = None, 
                        execution_id: Optional[str] = None) -> ToolResult:
         """
         Process a knowledge ingestion request using pipeline orchestration.
         
         Args:
             request_data: Standard API request data
-            files: List of file information (each with path, metadata, etc.)
+            files: List of file information (each with path, metadata, etc. Optional)
             execution_id: Optional execution ID for tracking
             
         Returns:
@@ -51,13 +49,13 @@ class PipelineAPIIntegration:
         # Execute pipeline based on process strategy
         return self.orchestrator.execute_with_process_strategy(context, execution_id)
     
-    def _prepare_context(self, request_data: Dict[str, Any], files: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _prepare_context(self, request_data: Dict[str, Any], files: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Prepare context for pipeline execution from API request.
         
         Args:
             request_data: API request data
-            files: List of file information
+            files: List of file information (optional)
             
         Returns:
             Context dictionary for pipeline execution
@@ -69,7 +67,7 @@ class PipelineAPIIntegration:
             "target_type": request_data.get("target_type", "knowledge_graph"),
             "process_strategy": request_data.get("process_strategy", {}),
             "metadata": metadata,
-            "files": files,
+            "files": files or [],
             "llm_client": request_data.get("llm_client"),
             "embedding_func": request_data.get("embedding_func"),
             "force_regenerate": request_data.get("force_regenerate", False),
@@ -81,8 +79,21 @@ class PipelineAPIIntegration:
         # Handle file-specific parameters if files are provided
         if files and len(files) == 1:
             file_info = files[0]
-            context["file_path"] = file_info.get("path")
-            context["original_filename"] = file_info.get("filename")
+            
+            # Support both legacy file_path and new in-memory formats
+            if "path" in file_info:
+                context["file_path"] = file_info.get("path")
+                context["original_filename"] = file_info.get("filename")
+            elif "file_content" in file_info:
+                # In-memory file processing
+                context["file_content"] = file_info.get("file_content")
+                context["file_name"] = file_info.get("file_name")
+                context["file_type"] = file_info.get("file_type")
+            elif "content" in file_info:
+                # Direct text content processing
+                context["content"] = file_info.get("content")
+                context["file_name"] = file_info.get("file_name")
+                context["file_type"] = file_info.get("file_type")
             
         return context
     
@@ -141,7 +152,7 @@ class PipelineAPIIntegration:
         files = [{"path": fp, "metadata": {}} for fp in file_paths]
         
         context = {
-            "files": files,
+            "files": files or [],
             "topic_name": topic_name,
             "metadata": metadata or {},
             "llm_client": llm_client,

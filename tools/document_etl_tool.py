@@ -9,12 +9,14 @@ DocumentETLTool: Processes a single raw document file.
 
 import hashlib
 import os
+import base64
 from pathlib import Path
 from typing import Dict, Any, Optional
 import logging
+import io
 
 from tools.base import BaseTool, ToolResult
-from etl.extract import extract_source_data
+from etl.extract import extract_source_data, extract_data_from_text_file
 from knowledge_graph.models import RawDataSource, SourceData, ContentStore
 from setting.db import SessionLocal
 
@@ -63,11 +65,22 @@ class DocumentETLTool(BaseTool):
     def input_schema(self) -> Dict[str, Any]:
         return {
             "type": "object",
-            "required": ["file_path", "topic_name"],
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path to the document file"
+                    "description": "Path to the document file (legacy, optional if file_content provided)"
+                },
+                "file_content": {
+                    "type": "string",
+                    "description": "Base64 encoded file content for in-memory processing"
+                },
+                "file_name": {
+                    "type": "string",
+                    "description": "Original filename for content-based processing"
+                },
+                "file_type": {
+                    "type": "string",
+                    "description": "MIME type of the file (e.g., application/pdf, text/plain)"
                 },
                 "topic_name": {
                     "type": "string",
@@ -88,12 +101,16 @@ class DocumentETLTool(BaseTool):
                     "description": "Document URL/link",
                     "default": None
                 },
-                "original_filename": {
+                "content": {
                     "type": "string",
-                    "description": "Original filename if different from file_path",
-                    "default": None
+                    "description": "Direct text content for text-based processing (bypasses file extraction)"
                 }
-            }
+            },
+            "anyOf": [
+                {"required": ["file_path", "topic_name"]},
+                {"required": ["file_content", "file_name", "topic_name"]},
+                {"required": ["content", "file_name", "topic_name"]}
+            ]
         }
     
     @property
@@ -130,53 +147,218 @@ class DocumentETLTool(BaseTool):
     
     def validate_input(self, input_data: Dict[str, Any]) -> bool:
         """Validate input parameters."""
-        file_path = input_data.get("file_path")
-        if not file_path or not Path(file_path).exists():
-            return False
-        
         topic_name = input_data.get("topic_name")
         if not topic_name or not isinstance(topic_name, str):
             return False
             
+        # Check if we have at least one valid input method
+        file_path = input_data.get("file_path")
+        file_content = input_data.get("file_content")
+        content = input_data.get("content")
+        
+        if file_path:
+            if not Path(file_path).exists():
+                return False
+        elif file_content:
+            if not input_data.get("file_name"):
+                return False
+        elif content:
+            if not input_data.get("file_name"):
+                return False
+        else:
+            return False  # No valid input provided
+            
         return True
     
+    def _extract_content_in_memory(self, file_content: bytes, file_name: str, file_type: str = None) -> Dict[str, Any]:
+        """Extract content from file bytes in memory."""
+        try:
+            file_extension = Path(file_name).suffix.lower()
+            
+            if not file_type:
+                # Infer file type from extension
+                if file_extension == ".pdf":
+                    file_type = "application/pdf"
+                elif file_extension == ".md":
+                    file_type = "text/markdown"
+                elif file_extension == ".txt":
+                    file_type = "text/plain"
+                elif file_extension == ".sql":
+                    file_type = "text/sql"
+                else:
+                    file_type = "text/plain"
+            
+            if file_type.startswith("text/") or file_extension in [".md", ".txt", ".sql"]:
+                # Text-based content
+                try:
+                    content = file_content.decode('utf-8')
+                except UnicodeDecodeError:
+                    content = file_content.decode('utf-8', errors='ignore')
+                
+                return {
+                    "status": "success",
+                    "content": content,
+                    "file_type": file_extension.lstrip('.')
+                }
+            elif file_type == "application/pdf" or file_extension == ".pdf":
+                # For PDF, we'll use a simplified approach since pymupdf requires file path
+                # This is a limitation - we might need to use BytesIO or similar
+                # For now, we'll treat it as text extraction
+                try:
+                    import pymupdf
+                    import tempfile
+                    
+                    # Temporarily write to memory file for PDF processing
+                    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+                        tmp_file.write(file_content)
+                        tmp_file.flush()
+                        
+                        try:
+                            doc = pymupdf.open(tmp_file.name)
+                            content = ""
+                            for page in doc:
+                                content += page.get_text()
+                            doc.close()
+                            
+                            return {
+                                "status": "success",
+                                "content": content,
+                                "file_type": "pdf"
+                            }
+                        finally:
+                            # Clean up temp file
+                            try:
+                                os.unlink(tmp_file.name)
+                            except:
+                                pass
+                                
+                except ImportError:
+                    # Fallback to text extraction
+                    return {
+                        "status": "success",
+                        "content": file_content.decode('utf-8', errors='ignore'),
+                        "file_type": "pdf"
+                    }
+            else:
+                # Default to text extraction
+                return {
+                    "status": "success",
+                    "content": file_content.decode('utf-8', errors='ignore'),
+                    "file_type": "unknown"
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Error extracting content from file bytes: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "content": "",
+                "file_type": "unknown"
+            }
+
     def execute(self, input_data: Dict[str, Any]) -> ToolResult:
         """
         Execute ETL processing for a single document.
         
         Args:
             input_data: Dictionary containing:
-                - file_path: Path to the document file
+                - file_path: Path to the document file (legacy)
+                - file_content: Base64 encoded file content
+                - file_name: Original filename
+                - file_type: MIME type
+                - content: Direct text content
                 - topic_name: Topic name for grouping
                 - metadata: Optional custom metadata
                 - force_reprocess: Whether to force reprocessing
                 - link: Optional document link/URL
-                - original_filename: Optional original filename
                 
         Returns:
             ToolResult with SourceData processing results
         """
         try:
-            file_path = Path(input_data["file_path"])
             topic_name = input_data["topic_name"]
             metadata = input_data.get("metadata", {})
             force_reprocess = input_data.get("force_reprocess", False)
-            link = input_data.get("link", f"file://{file_path}")
-            original_filename = input_data.get("original_filename", file_path.name)
+            link = input_data.get("link")
             
-            self.logger.info(f"Starting ETL processing for file: {file_path}")
+            # Determine input method
+            file_path = input_data.get("file_path")
+            file_content = input_data.get("file_content")
+            direct_content = input_data.get("content")
+            file_name = input_data.get("file_name", "unknown")
+            file_type = input_data.get("file_type")
             
-            # Check if file exists
-            if not file_path.exists():
+            if file_path:
+                # Legacy file path processing
+                file_path_obj = Path(file_path)
+                original_filename = input_data.get("original_filename", file_path_obj.name)
+                link = link or f"file://{file_path}"
+                
+                with open(file_path, 'rb') as f:
+                    file_content_bytes = f.read()
+                    file_hash = hashlib.sha256(file_content_bytes).hexdigest()
+                    
+                # Extract content using existing method
+                extraction_result = extract_source_data(str(file_path))
+                content = extraction_result.get("content", "")
+                source_type = extraction_result.get("file_type", "unknown")
+                
+            elif file_content:
+                # Base64 encoded file content processing
+                try:
+                    file_content_bytes = base64.b64decode(file_content)
+                except Exception as e:
+                    return ToolResult(
+                        success=False,
+                        error_message=f"Invalid base64 encoding: {e}"
+                    )
+                
+                original_filename = file_name
+                link = link or f"inline://{file_name}"
+                file_hash = hashlib.sha256(file_content_bytes).hexdigest()
+                
+                # Extract content in memory
+                extraction_result = self._extract_content_in_memory(
+                    file_content_bytes, file_name, file_type
+                )
+                
+                if extraction_result["status"] != "success":
+                    return ToolResult(
+                        success=False,
+                        error_message=f"Content extraction failed: {extraction_result.get('error', 'Unknown error')}"
+                    )
+                
+                content = extraction_result["content"]
+                source_type = extraction_result["file_type"]
+                
+            elif direct_content:
+                # Direct text content processing
+                content = direct_content
+                original_filename = file_name
+                link = link or f"inline://{file_name}"
+                file_content_bytes = content.encode('utf-8')
+                file_hash = hashlib.sha256(file_content_bytes).hexdigest()
+                source_type = "text"
+                
+            else:
                 return ToolResult(
                     success=False,
-                    error_message=f"File not found: {file_path}"
+                    error_message="No valid input provided (file_path, file_content, or content)"
                 )
             
-            # Calculate file hash for deduplication
-            with open(file_path, 'rb') as f:
-                file_content = f.read()
-                file_hash = hashlib.sha256(file_content).hexdigest()
+            self.logger.info(f"Starting ETL processing for file: {original_filename}")
+            
+            # Normalize content type
+            if source_type == "pdf":
+                source_type = "application/pdf"
+            elif source_type == "md":
+                source_type = "text/markdown"
+            elif source_type == "txt":
+                source_type = "text/plain"
+            elif source_type == "text":
+                source_type = "text/plain"
+            else:
+                source_type = f"text/{source_type}" if source_type else "text/plain"
             
             with self.session_factory() as db:
                 # Check if we already have this content
@@ -185,14 +367,16 @@ class DocumentETLTool(BaseTool):
                 ).first()
                 
                 # Create or get RawDataSource record
+                # For in-memory processing, use the link as file_path identifier
+                file_path_str = str(file_path) if file_path else link
                 raw_data_source = db.query(RawDataSource).filter_by(
-                    file_path=str(file_path),
+                    file_path=file_path_str,
                     topic_name=topic_name
                 ).first()
                 
                 if not raw_data_source:
                     raw_data_source = RawDataSource(
-                        file_path=str(file_path),
+                        file_path=file_path_str,
                         topic_name=topic_name,
                         original_filename=original_filename,
                         metadata=metadata,
@@ -208,7 +392,7 @@ class DocumentETLTool(BaseTool):
                     ).first()
                     
                     if existing_source_data:
-                        self.logger.info(f"SourceData already exists for file: {file_path}")
+                        self.logger.info(f"SourceData already exists for file: {original_filename}")
                         return ToolResult(
                             success=True,
                             data={
@@ -218,9 +402,9 @@ class DocumentETLTool(BaseTool):
                                 "status": "already_processed"
                             },
                             metadata={
-                                "file_path": str(file_path),
+                                "file_path": file_path_str,
                                 "topic_name": topic_name,
-                                "file_size": len(file_content)
+                                "file_size": len(file_content_bytes)
                             }
                         )
                 
@@ -228,31 +412,7 @@ class DocumentETLTool(BaseTool):
                 raw_data_source.status = "etl_processing"
                 db.commit()
                 
-                # Extract content from file
-                try:
-                    extraction_result = extract_source_data(str(file_path))
-                    content = extraction_result.get("content", "")
-                    source_type = extraction_result.get("file_type", "unknown")
-                    # Normalize content type to match job standards
-                    if source_type == "pdf":
-                        source_type = "application/pdf"
-                    elif source_type == "md":
-                        source_type = "text/markdown"
-                    elif source_type == "txt":
-                        source_type = "text/plain"
-                    elif source_type == "sql":
-                        source_type = "application/sql"
-                    else:
-                        source_type = "text/plain"
-                except Exception as e:
-                    self.logger.error(f"Failed to extract content from {file_path}: {e}")
-                    # Update status to failed
-                    raw_data_source.status = "etl_failed"
-                    db.commit()
-                    return ToolResult(
-                        success=False,
-                        error_message=f"Content extraction failed: {str(e)}"
-                    )
+                # Content is already extracted above, no need for extract_source_data call
                 
                 # Create or update ContentStore
                 if not content_store:
@@ -261,7 +421,7 @@ class DocumentETLTool(BaseTool):
                         content=content,
                         content_size=len(content),
                         content_type=source_type,
-                        name=file_path.stem,
+                        name=Path(original_filename).stem,
                         link=link
                     )
                     db.add(content_store)
@@ -277,9 +437,9 @@ class DocumentETLTool(BaseTool):
                     source_type=source_type,
                     attributes={
                         **metadata,
-                        "file_path": str(file_path),
+                        "file_path": file_path_str,
                         "original_filename": original_filename,
-                        "file_size": len(file_content),
+                        "file_size": len(file_content_bytes),
                         "extraction_method": "DocumentETLTool"
                     },
                     status="created"
@@ -292,7 +452,7 @@ class DocumentETLTool(BaseTool):
                 db.commit()
                 db.refresh(source_data)
                 
-                self.logger.info(f"ETL processing completed for file: {file_path}")
+                self.logger.info(f"ETL processing completed for file: {original_filename}")
                 
                 return ToolResult(
                     success=True,
@@ -305,9 +465,9 @@ class DocumentETLTool(BaseTool):
                         "status": "created"
                     },
                     metadata={
-                        "file_path": str(file_path),
+                        "file_path": file_path_str,
                         "topic_name": topic_name,
-                        "file_size": len(file_content),
+                        "file_size": len(file_content_bytes),
                         "content_type": source_type
                     }
                 )

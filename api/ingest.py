@@ -1,17 +1,14 @@
 import logging
 import json
+import base64
 from pathlib import Path
-from typing import Optional, Dict, Any, Callable, Awaitable, List
-import tempfile
-import shutil
-import os
+from typing import Optional, Dict, Any
 import uuid
 
 from fastapi import APIRouter, Request, HTTPException, status, UploadFile, Form
 from fastapi.responses import JSONResponse
 
 from api.models import APIResponse, DocumentMetadata, ProcessedDocument
-from api.memory import _get_memory_system
 from knowledge_graph.models import GraphBuild
 from setting.db import SessionLocal, db_manager
 from tools.api_integration import PipelineAPIIntegration
@@ -36,7 +33,7 @@ api_integration = PipelineAPIIntegration()
 
 async def _process_file_with_pipeline(
     file: UploadFile, metadata: Dict[str, Any], process_strategy: Dict[str, Any]) -> JSONResponse:
-    """Process an uploaded file using the new tool-based pipeline."""
+    """Process an uploaded file using the new tool-based pipeline with in-memory processing."""
     _validate_file(file)
 
     topic_name = metadata.get("topic_name")
@@ -54,17 +51,11 @@ async def _process_file_with_pipeline(
             detail="`topic_name` and `link` are required in metadata for target_type 'knowledge_graph'.",
         )
 
-    # Create temporary storage for the file
-    temp_dir = tempfile.mkdtemp(prefix="knowledge_ingest_")
     try:
-        file_path = Path(temp_dir) / (file.filename or "uploaded_file")
+        # Read file content for processing
+        file_content = await file.read()
         
-        # Save uploaded file
-        with open(file_path, "wb") as f:
-            content = await file.read()
-            f.write(content)
-
-        # Prepare request data for pipeline
+        # Prepare request data in SmartSave API format
         request_data = {
             "target_type": "knowledge_graph",
             "metadata": {
@@ -76,21 +67,26 @@ async def _process_file_with_pipeline(
             "process_strategy": process_strategy or {}
         }
 
-        # Prepare file information
-        files = [{
-            "path": str(file_path),
-            "filename": file.filename or "unknown",
-            "metadata": custom_metadata
-        }]
+        # Prepare file information for DocumentETLTool using SmartSave format
+        # The tool will handle the content appropriately
+        context = {
+            "file_content": base64.b64encode(file_content).decode('utf-8'),
+            "file_name": file.filename or "unknown",
+            "file_type": file.content_type or "application/octet-stream",
+            "topic_name": topic_name,
+            "link": link or f"upload://{file.filename}",
+            "metadata": custom_metadata,
+            **request_data
+        }
 
-        # Execute pipeline
-        result = api_integration.process_request(request_data, files)
+        # Execute pipeline using orchestrator
+        result = api_integration.process_request(request_data, [context])
 
         # Create response
         processed_doc = ProcessedDocument(
             id=result.execution_id or str(uuid.uuid4()),
             name=file.filename or "unknown",
-            file_path=str(file_path),
+            file_path=f"inline://{file.filename or 'uploaded_file'}",
             doc_link=link,
             file_type=_get_file_type(Path(file.filename or "unknown")),
             status="processing" if result.success else "failed",
@@ -107,12 +103,16 @@ async def _process_file_with_pipeline(
             content=response.model_dump()
         )
 
-    finally:
-        # Clean up temporary directory
-        try:
-            shutil.rmtree(temp_dir)
-        except Exception as e:
-            logger.warning(f"Failed to clean up temp directory {temp_dir}: {e}")
+    except Exception as e:
+        logger.error(f"Failed to process file with pipeline: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "status": "error",
+                "message": f"Failed to process file: {str(e)}",
+                "data": None
+            }
+        )
 
 
 
@@ -184,9 +184,9 @@ async def _process_file_for_knowledge_graph(
     response = APIResponse(
         status="success",
         message=f"Successfully processed file for knowledge graph. Status: {status_msg}",
-        data=processed_doc.dict(),
+        data=processed_doc.model_dump(),
     )
-    return JSONResponse(status_code=status.HTTP_200_OK, content=response.dict())
+    return JSONResponse(status_code=status.HTTP_200_OK, content=response.model_dump())
 
 
 async def _process_json_for_personal_memory(
@@ -250,57 +250,48 @@ async def _process_json_for_knowledge_graph(
     else:
         content = str(input_data)
 
-    # Create temporary file for processing
-    temp_dir = tempfile.mkdtemp(prefix="knowledge_json_")
-    try:
-        file_path = Path(temp_dir) / "input.json"
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(content)
+    # Prepare request data in SmartSave API format
+    request_data = {
+        "target_type": "knowledge_graph",
+        "metadata": metadata,
+        "process_strategy": process_strategy or {}
+    }
 
-        # Prepare request data for pipeline
-        request_data = {
-            "target_type": "knowledge_graph",
-            "metadata": metadata,
-            "process_strategy": process_strategy or {}
-        }
+    # Prepare content for processing using SmartSave format
+    context = {
+        "content": content,
+        "file_name": "input.json",
+        "file_type": "text/plain",
+        "topic_name": metadata.get("topic_name"),
+        "link": metadata.get("link", "inline_input"),
+        "metadata": {},
+        **request_data
+    }
 
-        # Prepare file information
-        files = [{
-            "path": str(file_path),
-            "filename": "input.json",
-            "metadata": {}
-        }]
+    # Execute pipeline using orchestrator
+    result = api_integration.process_request(request_data, [context])
 
-        # Execute pipeline
-        result = api_integration.process_request(request_data, files)
+    # Create response
+    processed_doc = ProcessedDocument(
+        id=result.execution_id or str(uuid.uuid4()),
+        name="input.json",
+        file_path="inline://input.json",
+        doc_link=metadata.get("link", "inline_input"),
+        file_type="json",
+        status="processing" if result.success else "failed",
+    )
 
-        # Create response
-        processed_doc = ProcessedDocument(
-            id=result.execution_id or str(uuid.uuid4()),
-            name="input.json",
-            file_path=str(file_path),
-            doc_link=metadata.get("link", "inline_input"),
-            file_type="json",
-            status="processing" if result.success else "failed",
-        )
+    response = APIResponse(
+        status="success" if result.success else "error",
+        message=result.message or "Processing completed",
+        data=processed_doc.model_dump(),
+    )
 
-        response = APIResponse(
-            status="success" if result.success else "error",
-            message=result.message or "Processing completed",
-            data=processed_doc.model_dump(),
-        )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK if result.success else status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=response.model_dump()
+    )
 
-        return JSONResponse(
-            status_code=status.HTTP_200_OK if result.success else status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=response.model_dump()
-        )
-
-    finally:
-        # Clean up temporary directory
-        try:
-            shutil.rmtree(temp_dir)
-        except Exception as e:
-            logger.warning(f"Failed to clean up temp directory {temp_dir}: {e}")
 
 
 # --- Request Handlers ---
