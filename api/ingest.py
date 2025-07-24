@@ -2,7 +2,7 @@ import logging
 import json
 import base64
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import uuid
 
 from fastapi import APIRouter, Request, HTTPException, status, UploadFile, Form
@@ -31,11 +31,10 @@ router = APIRouter(prefix="/api/v1", tags=["ingest"])
 api_integration = PipelineAPIIntegration()
 
 
-async def _process_file_with_pipeline(
-    file: UploadFile, metadata: Dict[str, Any], process_strategy: Dict[str, Any]) -> JSONResponse:
-    """Process an uploaded file using the new tool-based pipeline with in-memory processing."""
-    _validate_file(file)
-
+async def _process_files_with_pipeline(
+    files: List[UploadFile], metadata: Dict[str, Any], process_strategy: Dict[str, Any]) -> JSONResponse:
+    """Process uploaded files using the new tool-based pipeline with in-memory processing."""
+    
     topic_name = metadata.get("topic_name")
     link = metadata.get("link")
     database_uri = metadata.get("database_uri")
@@ -52,8 +51,11 @@ async def _process_file_with_pipeline(
         )
 
     try:
-        # Read file content for processing
-        file_content = await file.read()
+        # Validate all files
+        for file in files:
+            _validate_file(file)
+        
+        file_count = len(files)
         
         # Prepare request data in SmartSave API format
         request_data = {
@@ -62,40 +64,45 @@ async def _process_file_with_pipeline(
                 "topic_name": topic_name,
                 "link": link,
                 "database_uri": database_uri,
+                "file_count": file_count,
+                "is_new_topic": metadata.get("is_new_topic", file_count > 1),
                 **custom_metadata
             },
             "process_strategy": process_strategy or {}
         }
 
         # Prepare file information for DocumentETLTool using SmartSave format
-        # The tool will handle the content appropriately
-        context = {
-            "file_content": base64.b64encode(file_content).decode('utf-8'),
-            "file_name": file.filename or "unknown",
-            "file_type": file.content_type or "application/octet-stream",
-            "topic_name": topic_name,
-            "link": link or f"upload://{file.filename}",
-            "metadata": custom_metadata,
-            **request_data
-        }
+        file_contexts = []
+        for file in files:
+            file_content = await file.read()
+            file_contexts.append({
+                "file_content": base64.b64encode(file_content).decode('utf-8'),
+                "file_name": file.filename or f"file_{len(file_contexts) + 1}",
+                "file_type": file.content_type or "application/octet-stream",
+                "topic_name": topic_name,
+                "link": f"{link}/file_{len(file_contexts) + 1}",
+                "metadata": custom_metadata
+            })
 
         # Execute pipeline using orchestrator
-        result = api_integration.process_request(request_data, [context])
+        result = api_integration.process_request(request_data, file_contexts)
 
-        # Create response
-        processed_doc = ProcessedDocument(
-            id=result.execution_id or str(uuid.uuid4()),
-            name=file.filename or "unknown",
-            file_path=f"inline://{file.filename or 'uploaded_file'}",
-            doc_link=link,
-            file_type=_get_file_type(Path(file.filename or "unknown")),
-            status="processing" if result.success else "failed",
-        )
+        # Create response for multiple files
+        processed_docs = []
+        for i, file in enumerate(files):
+            processed_docs.append(ProcessedDocument(
+                id=f"{result.execution_id}_{i}" if result.execution_id else str(uuid.uuid4()),
+                name=file.filename or f"file_{i + 1}",
+                file_path=f"inline://{file.filename or f'uploaded_file_{i + 1}'}",
+                doc_link=f"{link}/file_{i + 1}",
+                file_type=_get_file_type(Path(file.filename or f"file_{i + 1}")),
+                status="processing" if result.success else "failed",
+            ).model_dump())
 
         response = APIResponse(
             status="success" if result.success else "error",
-            message=result.message or "Processing completed",
-            data=processed_doc.model_dump(),
+            message=result.message or f"Processing {file_count} files completed",
+            data=processed_docs,
         )
 
         return JSONResponse(
@@ -104,12 +111,12 @@ async def _process_file_with_pipeline(
         )
 
     except Exception as e:
-        logger.error(f"Failed to process file with pipeline: {e}")
+        logger.error(f"Failed to process files with pipeline: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "status": "error",
-                "message": f"Failed to process file: {str(e)}",
+                "message": f"Failed to process files: {str(e)}",
                 "data": None
             }
         )
@@ -293,17 +300,16 @@ async def _process_json_for_knowledge_graph(
     )
 
 
-
 # --- Request Handlers ---
 
 
 async def _handle_form_data(
-    file: UploadFile,
+    files: List[UploadFile],
     metadata_str: str,
     target_type: str,
     process_strategy: Optional[dict] = None,
 ) -> JSONResponse:
-    """Handles multipart/form-data for file uploads."""
+    """Handles multipart/form-data for file uploads (supports multiple files)."""
     try:
         metadata = json.loads(metadata_str)
     except json.JSONDecodeError:
@@ -314,8 +320,8 @@ async def _handle_form_data(
 
     # Dispatch based on target_type for form-data
     if target_type == "knowledge_graph":
-        # Use new tool-based pipeline system
-        return await _process_file_with_pipeline(file, metadata, process_strategy or {})
+        # Use new tool-based pipeline system with multiple files
+        return await _process_files_with_pipeline(files, metadata, process_strategy or {})
     else:
         raise HTTPException(
             status_code=400,
@@ -379,7 +385,7 @@ async def _handle_json_data(request: Request) -> JSONResponse:
 @router.post("/save", response_model=APIResponse, status_code=status.HTTP_200_OK)
 async def save_data(
     request: Request,
-    file: Optional[UploadFile] = Form(None),
+    files: Optional[List[UploadFile]] = Form(None),
     metadata: Optional[str] = Form(None),
     target_type: Optional[str] = Form(None),
     process_strategy: Optional[str] = Form(None),
@@ -391,7 +397,7 @@ async def save_data(
     The processing behavior is determined by `target_type`.
 
     **For File Uploads (`multipart/form-data`):**
-    - `file`: The file to be uploaded.
+    - `files[]`: One or more files to be uploaded.
     - `metadata`: A JSON string with fields like `topic_name`, `link`, etc.
     - `target_type`: The desired output (e.g., "knowledge_graph").
     - `process_strategy` (optional): A JSON string representing a dictionary for processing options.
@@ -406,10 +412,10 @@ async def save_data(
     content_type = request.headers.get("content-type", "")
 
     if "multipart/form-data" in content_type:
-        if not file or not metadata or not target_type:
+        if not files or not metadata or not target_type:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="For multipart/form-data, 'file', 'metadata', and 'target_type' are required.",
+                detail="For multipart/form-data, 'files[]', 'metadata', and 'target_type' are required.",
             )
         # Parse process_strategy from string to dict if provided
         parsed_process_strategy = None
@@ -421,7 +427,7 @@ async def save_data(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid JSON in process_strategy.",
                 )
-        return await _handle_form_data(file, metadata, target_type, parsed_process_strategy)
+        return await _handle_form_data(files, metadata, target_type, parsed_process_strategy)
     elif "application/json" in content_type:
         return await _handle_json_data(request)
     else:

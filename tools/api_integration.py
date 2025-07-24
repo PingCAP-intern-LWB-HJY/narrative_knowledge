@@ -68,37 +68,59 @@ class PipelineAPIIntegration:
             "process_strategy": request_data.get("process_strategy", {}),
             "metadata": metadata,
             "files": files or [],
-            "llm_client": request_data.get("llm_client"),
-            "embedding_func": request_data.get("embedding_func"),
+            "llm_config": request_data.get("llm_config"),
+            "embedding_config": request_data.get("embedding_config"),
             "force_regenerate": request_data.get("force_regenerate", False),
             "topic_name": metadata.get("topic_name"),
             "link": metadata.get("link"),
             "database_uri": metadata.get("database_uri")
         }
         
-        # Handle file-specific parameters if files are provided
-        if files and len(files) == 1:
-            file_info = files[0]
+        # Handle file-specific parameters based on number of files
+        if files:
+            file_count = len(files)
             
-            # Support both legacy file_path and new in-memory formats
-            if "path" in file_info:
-                context["file_path"] = file_info.get("path")
-                context["original_filename"] = file_info.get("filename")
-            elif "file_content" in file_info:
-                # In-memory file processing
-                context["file_content"] = file_info.get("file_content")
-                context["file_name"] = file_info.get("file_name")
-                context["file_type"] = file_info.get("file_type")
-            elif "content" in file_info:
-                # Direct text content processing
-                context["content"] = file_info.get("content")
-                context["file_name"] = file_info.get("file_name")
-                context["file_type"] = file_info.get("file_type")
+            # Single file processing
+            if file_count == 1:
+                file_info = files[0]
+                
+                # Support both legacy file_path and new in-memory formats
+                if "path" in file_info:
+                    context["file_path"] = file_info.get("path")
+                    context["original_filename"] = file_info.get("filename")
+                elif "file_content" in file_info:
+                    # In-memory file processing
+                    context["file_content"] = file_info.get("file_content")
+                    context["file_name"] = file_info.get("file_name")
+                    context["file_type"] = file_info.get("file_type")
+                elif "content" in file_info:
+                    # Direct text content processing
+                    context["content"] = file_info.get("content")
+                    context["file_name"] = file_info.get("file_name")
+                    context["file_type"] = file_info.get("file_type")
             
+            # Multiple files processing
+            else:
+                # Set file count for pipeline selection
+                context["metadata"]["file_count"] = file_count
+                context["metadata"]["is_new_topic"] = metadata.get("is_new_topic", False)
+                
+                # Provide individual file information for batch processing
+                context["file_paths"] = [f.get("path") for f in files if "path" in f]
+                context["file_contents"] = [
+                    {
+                        "file_content": f.get("file_content"),
+                        "file_name": f.get("file_name"),
+                        "file_type": f.get("file_type")
+                    }
+                    for f in files
+                    if "file_content" in f
+                ]
+                
         return context
     
     def process_single_file(self, file_path: str, topic_name: str, metadata: Dict[str, Any] = None,
-                          llm_client=None, embedding_func=None) -> ToolResult:
+                          llm_config=None, embedding_config=None) -> ToolResult:
         """
         Process a single file using the appropriate pipeline.
         
@@ -116,8 +138,8 @@ class PipelineAPIIntegration:
             "file_path": file_path,
             "topic_name": topic_name,
             "metadata": metadata or {},
-            "llm_client": llm_client,
-            "embedding_func": embedding_func
+            "llm_config": llm_config,
+            "embedding_config": embedding_config
         }
         
         # Determine if this is a new topic or existing
@@ -135,7 +157,7 @@ class PipelineAPIIntegration:
         return self.orchestrator.execute_with_process_strategy(context)
     
     def process_batch_files(self, file_paths: List[str], topic_name: str, metadata: Dict[str, Any] = None,
-                          llm_client=None, embedding_func=None) -> ToolResult:
+                          llm_config=None, embedding_config=None) -> ToolResult:
         """
         Process multiple files using batch pipeline.
         
@@ -155,8 +177,8 @@ class PipelineAPIIntegration:
             "files": files or [],
             "topic_name": topic_name,
             "metadata": metadata or {},
-            "llm_client": llm_client,
-            "embedding_func": embedding_func
+            "llm_config": llm_config,
+            "embedding_config": embedding_config
         }
         
         return self.orchestrator.execute_with_process_strategy(context)

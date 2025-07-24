@@ -5,7 +5,7 @@ import os
 from setting.base import EMBEDDING_MODEL, EMBEDDING_BASE_URL, EMBEDDING_MODEL_API_KEY
 
 
-def get_text_embedding(text: str, model):
+def get_text_embedding(text: str, model=None):
     embedding_model = openai.OpenAI(
         base_url=EMBEDDING_BASE_URL,
         api_key=EMBEDDING_MODEL_API_KEY,

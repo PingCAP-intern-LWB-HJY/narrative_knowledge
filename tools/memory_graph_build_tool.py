@@ -25,8 +25,8 @@ class MemoryGraphBuildTool(GraphBuildTool):
     tool-based processing.
     """
     
-    def __init__(self, session_factory=None, llm_client=None, embedding_func=None):
-        super().__init__(session_factory, llm_client, embedding_func)
+    def __init__(self, session_factory=None, llm_config=None, embedding_config=None):
+        super().__init__(session_factory, llm_config, embedding_config)
         self.memory_system = None
     
     @property
@@ -71,13 +71,28 @@ class MemoryGraphBuildTool(GraphBuildTool):
                     "description": "Force reprocessing even if already processed",
                     "default": False
                 },
-                "llm_client": {
+                "llm_config": {
                     "type": "object",
-                    "description": "LLM client instance for processing"
+                    "description": "LLM configuration for processing",
+                    "properties": {
+                        "provider": {
+                            "type": "string",
+                            "description": "LLM provider name (openai, ollama, gemini, etc.)"
+                        },
+                        "model": {
+                            "type": "string", 
+                            "description": "Model name to use for generation"
+                        },
+                        "kwargs": {
+                            "type": "object",
+                            "description": "Additional provider-specific parameters"
+                        }
+                    },
+                    "required": ["provider", "model"]
                 },
-                "embedding_func": {
+                "embedding_config": {
                     "type": "object",
-                    "description": "Embedding function for vector operations"
+                    "description": "Embedding configuration for vector operations"
                 }
             }
         }
@@ -130,25 +145,25 @@ class MemoryGraphBuildTool(GraphBuildTool):
                     error_message="user_id is required"
                 )
             
-            # Initialize memory system with provided clients
-            llm_client = input_data.get("llm_client", self.llm_client)
-            embedding_func = input_data.get("embedding_func", self.embedding_func)
+            # Get LLM config from input or use provided one
+            llm_config = input_data.get("llm_config", self.llm_config)
+            embedding_config = input_data.get("embedding_config", self.embedding_config)
             
-            if not llm_client:
+            if not llm_config:
                 return ToolResult(
                     success=False,
-                    error_message="LLM client is required for memory processing"
+                    error_message="LLM configuration is required for memory processing"
                 )
             
-            # Initialize components
-            self.llm_client = llm_client
-            self.embedding_func = embedding_func
-            self._initialize_components()
+            # Initialize components with provided configurations
+            self.llm_config = llm_config
+            self.embedding_config = embedding_config
+            self._initialize_components(llm_config, embedding_config)
             
-            # Initialize memory system
+            # Initialize memory system with actual clients from config
             memory_system = PersonalMemorySystem(
-                llm_client=llm_client,
-                embedding_func=embedding_func,
+                llm_client=self.llm_client,
+                embedding_func=self.embedding_func,
                 session_factory=self.session_factory
             )
             

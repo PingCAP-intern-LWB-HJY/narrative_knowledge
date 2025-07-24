@@ -6,6 +6,7 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timezone
 import uuid
+from pathlib import Path
 
 from tools.base import ToolResult
 from tools.base import TOOL_REGISTRY
@@ -75,6 +76,8 @@ class PipelineOrchestrator:
         """
         Execute a custom pipeline with specific tool sequence.
         
+        Supports both single-file and batch processing.
+        
         Args:
             tools: List of tool names to execute in sequence
             context: Context data for pipeline execution
@@ -88,67 +91,33 @@ class PipelineOrchestrator:
         
         self.logger.info(f"Starting pipeline execution: {execution_id} - {tools}")
         
-        results = {}
-        pipeline_context = context.copy()
+        # Handle batch processing for multiple files
+        files = context.get("files", [])
+        file_contents = context.get("file_contents", [])
+        file_paths = context.get("file_paths", [])
         
-        try:
-            for tool_name in tools:
-                tool = TOOL_REGISTRY.get_tool(tool_name)
-                if not tool:
-                    return ToolResult(
-                        success=False,
-                        error_message=f"Tool '{tool_name}' not found"
-                    )
-                
-                # Prepare input for this tool
-                tool_input = self._prepare_tool_input(tool_name, pipeline_context, results)
-                
-                # Execute tool
-                self.logger.info(f"Executing tool: {tool_name}")
-                result = tool.execute_with_tracking(tool_input, f"{execution_id}_{tool_name}")
-                
-                if not result.success:
-                    return ToolResult(
-                        success=False,
-                        error_message=f"Tool '{tool_name}' failed: {result.error_message}",
-                        execution_id=execution_id,
-                        data={"failed_tool": tool_name, "previous_results": results}
-                    )
-                
-                results[tool_name] = result
-                pipeline_context = self._update_context(tool_name, pipeline_context, result)
-                
-                self.logger.info(f"Tool completed: {tool_name}")
-            
-            # Calculate duration
+        # Determine if we have multiple files to process
+        multiple_files = len(files) > 1 or len(file_contents) > 1 or len(file_paths) > 1
+        
+        if multiple_files and "etl" in [self.tool_key_mapping.get(tool, tool) for tool in tools]:
+            return self._execute_batch_pipeline(tools, context, execution_id)
+        
+        # Standard single-file processing - delegate to helper method
+        result = self._execute_single_file_pipeline(tools, context, execution_id)
+        
+        # Add duration and pipeline info for consistency
+        if result.success:
             end_time = datetime.now(timezone.utc)
             duration = (end_time - start_time).total_seconds()
             
             self.logger.info(f"Pipeline execution completed: {execution_id} in {duration:.2f}s")
             
-            return ToolResult(
-                success=True,
-                data={
-                    "results": results,
-                    "pipeline": tools,
-                    "duration_seconds": duration
-                },
-                execution_id=execution_id,
-                duration_seconds=duration
-            )
+            # Ensure the result has the expected structure
+            if "results" in result.data:
+                result.data["pipeline"] = tools
+                result.data["duration_seconds"] = duration
             
-        except Exception as e:
-            end_time = datetime.now(timezone.utc)
-            duration = (end_time - start_time).total_seconds()
-            
-            self.logger.error(f"Pipeline execution failed: {execution_id} - {e}")
-            
-            return ToolResult(
-                success=False,
-                error_message=str(e),
-                execution_id=execution_id,
-                duration_seconds=duration
-            )
+        return result
     
     def select_default_pipeline(self, target_type: str, topic_name: str, file_count: int, is_new_topic: bool, 
                               input_type: str = "document", file_extension: str = None) -> str:
@@ -225,16 +194,16 @@ class PipelineOrchestrator:
                     "topic_name": context.get("topic_name"),
                     "source_data_ids": source_data_ids or None,
                     "force_regenerate": context.get("force_regenerate", False),
-                    "llm_client": context.get("llm_client"),
-                    "embedding_func": context.get("embedding_func")
+                    "llm_config": context.get("llm_config"),
+                    "embedding_config": context.get("embedding_config")
                 }
             
             return {
                 "topic_name": context.get("topic_name"),
                 "source_data_ids": source_data_ids,
                 "force_regenerate": context.get("force_regenerate", False),
-                "llm_client": context.get("llm_client"),
-                "embedding_func": context.get("embedding_func")
+                "llm_config": context.get("llm_config"),
+                "embedding_config": context.get("embedding_config")
             }
         
         elif tool_key == "graph_build":
@@ -258,22 +227,22 @@ class PipelineOrchestrator:
                         "source_data_ids": source_data_ids,
                         "blueprint_id": blueprint_id,
                         "force_regenerate": context.get("force_regenerate", False),
-                        "llm_client": context.get("llm_client"),
-                        "embedding_func": context.get("embedding_func")
+                        "llm_config": context.get("llm_config"),
+                        "embedding_config": context.get("embedding_config")
                     }
                 elif source_data_ids and len(source_data_ids) == 1:
                     return {
                         "source_data_id": source_data_ids[0],
                         "force_regenerate": context.get("force_regenerate", False),
-                        "llm_client": context.get("llm_client"),
-                        "embedding_func": context.get("embedding_func")
+                        "llm_config": context.get("llm_config"),
+                        "embedding_config": context.get("embedding_config")
                     }
                 else:
                     return {
                         "topic_name": topic_name,
                         "force_regenerate": context.get("force_regenerate", False),
-                        "llm_client": context.get("llm_client"),
-                        "embedding_func": context.get("embedding_func")
+                        "llm_config": context.get("llm_config"),
+                        "embedding_config": context.get("embedding_config")
                     }
             
             # Case 2: No ETL/Blueprint (graph_build-only pipelines)
@@ -282,8 +251,8 @@ class PipelineOrchestrator:
                 return {
                     "topic_name": topic_name,
                     "force_regenerate": context.get("force_regenerate", False),
-                    "llm_client": context.get("llm_client"),
-                    "embedding_func": context.get("embedding_func")
+                    "llm_config": context.get("llm_config"),
+                    "embedding_config": context.get("embedding_config")
                 }
         
         return context.copy()
@@ -315,6 +284,231 @@ class PipelineOrchestrator:
             updated_context["topic_name"] = result.metadata.get("topic_name")
         
         return updated_context
+    
+    def _execute_batch_pipeline(self, tools: List[str], context: Dict[str, Any], execution_id: str) -> ToolResult:
+        """
+        Execute pipeline for multiple files in batch.
+        
+        Processes each file sequentially through the pipeline, accumulating results.
+        
+        Args:
+            tools: List of tool names to execute
+            context: Context containing multiple files
+            execution_id: Execution ID for tracking
+            
+        Returns:
+            ToolResult with aggregated batch processing results
+        """
+        self.logger.info(f"Starting batch pipeline execution: {execution_id} - {tools}")
+        
+        # Extract file information from context
+        files = context.get("files", [])
+        file_contents = context.get("file_contents", [])
+        file_paths = context.get("file_paths", [])
+        topic_name = context.get("topic_name")
+        
+        # Build list of individual file contexts
+        individual_files = []
+        
+        # Handle file_paths
+        for path in file_paths:
+            individual_files.append({"file_path": path})
+        
+        # Handle file_contents
+        for file_info in file_contents:
+            individual_files.append(file_info)
+        
+        # Handle files list (legacy format)
+        for file_info in files:
+            if "path" in file_info:
+                individual_files.append({"file_path": file_info["path"]})
+            elif "file_content" in file_info:
+                individual_files.append(file_info)
+            elif "content" in file_info:
+                individual_files.append(file_info)
+        
+        if not individual_files:
+            return ToolResult(
+                success=False,
+                error_message="No valid files found for batch processing"
+            )
+        
+        total_files = len(individual_files)
+        self.logger.info(f"Processing {total_files} files in batch")
+        
+        # Process each file through the pipeline
+        all_results = []
+        accumulated_source_data_ids = []
+        
+        for file_index, file_context in enumerate(individual_files):
+            file_execution_id = f"{execution_id}_file_{file_index}"
+            
+            # Create individual context for this file
+            individual_context = context.copy()
+            individual_context.update(file_context)
+            individual_context["metadata"] = context.get("metadata", {}).copy()
+            
+            # Add file-specific metadata
+            if "file_name" in file_context:
+                individual_context["metadata"]["original_filename"] = file_context["file_name"]
+            
+            # Execute pipeline for this single file
+            try:
+                file_result = self._execute_single_file_pipeline(
+                    tools, individual_context, file_execution_id
+                )
+                
+                if file_result.success:
+                    # Extract source_data_id from ETL results for blueprint generation
+                    if "etl" in file_result.data.get("results", {}):
+                        source_data_id = file_result.data["results"]["etl"].data.get("source_data_id")
+                        if source_data_id:
+                            accumulated_source_data_ids.append(source_data_id)
+                    
+                    all_results.append({
+                        "file_index": file_index,
+                        "file_name": file_context.get("file_name") or Path(file_context.get("file_path", "")).name,
+                        "results": file_result.data.get("results", {}),
+                        "success": True
+                    })
+                else:
+                    all_results.append({
+                        "file_index": file_index,
+                        "file_name": file_context.get("file_name") or Path(file_context.get("file_path", "")).name,
+                        "error": file_result.error_message,
+                        "success": False
+                    })
+                    
+            except Exception as e:
+                self.logger.error(f"Error processing file {file_index}: {e}")
+                all_results.append({
+                    "file_index": file_index,
+                    "file_name": file_context.get("file_name") or str(file_index),
+                    "error": str(e),
+                    "success": False
+                })
+        
+        # After processing all files, handle blueprint generation if needed
+        if "blueprint_gen" in [self.tool_key_mapping.get(tool, tool) for tool in tools] and accumulated_source_data_ids:
+            try:
+                blueprint_context = {
+                    **context,
+                    "source_data_ids": accumulated_source_data_ids,
+                    "topic_name": topic_name
+                }
+                
+                blueprint_input = self._prepare_tool_input("BlueprintGenerationTool", blueprint_context, {})
+                blueprint_tool = TOOL_REGISTRY.get_tool("BlueprintGenerationTool")
+                blueprint_result = blueprint_tool.execute_with_tracking(
+                    blueprint_input, f"{execution_id}_blueprint"
+                )
+                
+                if blueprint_result.success:
+                    blueprint_id = blueprint_result.data.get("blueprint_id")
+                    if blueprint_id:
+                        # Update all file contexts with the blueprint ID
+                        for result in all_results:
+                            if result["success"]:
+                                result["blueprint_id"] = blueprint_id
+                        
+                        # Process graph building for all files with the blueprint
+                        if "graph_build" in [self.tool_key_mapping.get(tool, tool) for tool in tools]:
+                            for file_result in all_results:
+                                if file_result["success"]:
+                                    source_data_id = file_result["results"].get("etl", {}).get("data", {}).get("source_data_id")
+                                    if source_data_id and blueprint_id:
+                                        try:
+                                            graph_context = {
+                                                **context,
+                                                "source_data_id": source_data_id,
+                                                "blueprint_id": blueprint_id,
+                                                "topic_name": topic_name
+                                            }
+                                            
+                                            graph_input = self._prepare_tool_input("GraphBuildTool", graph_context, {})
+                                            graph_tool = TOOL_REGISTRY.get_tool("GraphBuildTool")
+                                            graph_result = graph_tool.execute_with_tracking(
+                                                graph_input, f"{execution_id}_graph_{file_result['file_index']}"
+                                            )
+                                            
+                                            file_result["graph_result"] = graph_result.data
+                                            
+                                        except Exception as e:
+                                            self.logger.error(f"Error building graph for file {file_result['file_index']}: {e}")
+                                            file_result["graph_error"] = str(e)
+            except Exception as e:
+                self.logger.error(f"Error in batch blueprint generation: {e}")
+        
+        # Calculate overall statistics
+        successful_files = sum(1 for r in all_results if r["success"])
+        total_duration = (datetime.now(timezone.utc) - datetime.now(timezone.utc)).total_seconds()
+        
+        return ToolResult(
+            success=successful_files > 0,
+            data={
+                "processed_files": all_results,
+                "successful_count": successful_files,
+                "total_count": total_files,
+                "pipeline": tools,
+                "accumulated_source_data_ids": accumulated_source_data_ids
+            },
+            execution_id=execution_id,
+            duration_seconds=total_duration
+        )
+    
+    def _execute_single_file_pipeline(self, tools: List[str], context: Dict[str, Any], execution_id: str) -> ToolResult:
+        """
+        Execute pipeline for a single file.
+        
+        Args:
+            tools: List of tool names
+            context: Context for single file
+            execution_id: Execution ID
+            
+        Returns:
+            ToolResult for single file processing
+        """
+        results = {}
+        pipeline_context = context.copy()
+        
+        try:
+            for tool_name in tools:
+                tool = TOOL_REGISTRY.get_tool(tool_name)
+                if not tool:
+                    return ToolResult(
+                        success=False,
+                        error_message=f"Tool '{tool_name}' not found"
+                    )
+                
+                # Prepare input for this tool
+                tool_input = self._prepare_tool_input(tool_name, pipeline_context, results)
+                
+                # Execute tool
+                result = tool.execute_with_tracking(tool_input, f"{execution_id}_{tool_name}")
+                
+                if not result.success:
+                    return ToolResult(
+                        success=False,
+                        error_message=f"Tool '{tool_name}' failed: {result.error_message}",
+                        execution_id=execution_id,
+                        data={"failed_tool": tool_name, "previous_results": results}
+                    )
+                
+                results[tool_name] = result
+                pipeline_context = self._update_context(tool_name, pipeline_context, result)
+            
+            return ToolResult(
+                success=True,
+                data={"results": results},
+                execution_id=execution_id
+            )
+            
+        except Exception as e:
+            return ToolResult(
+                success=False,
+                error_message=str(e),
+                execution_id=execution_id
+            )
     
     def execute_scenario(self, scenario: str, context: Dict[str, Any], execution_id: Optional[str] = None) -> ToolResult:
         """

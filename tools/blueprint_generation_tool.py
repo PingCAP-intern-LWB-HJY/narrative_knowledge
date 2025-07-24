@@ -16,6 +16,8 @@ from knowledge_graph.models import SourceData, AnalysisBlueprint
 from knowledge_graph.congnitive_map import DocumentCognitiveMapGenerator
 from knowledge_graph.graph import NarrativeKnowledgeGraphBuilder
 from setting.db import SessionLocal
+from llm.factory import LLMInterface
+from llm.embedding import get_text_embedding
 
 
 class BlueprintGenerationTool(BaseTool):
@@ -41,26 +43,47 @@ class BlueprintGenerationTool(BaseTool):
         reused_existing (bool): Whether existing blueprint was reused
     """
     
-    def __init__(self, session_factory=None, llm_client=None, embedding_func=None):
+    def __init__(self, session_factory=None, llm_config=None, embedding_config=None):
         super().__init__(session_factory=session_factory)
         self.session_factory = session_factory or SessionLocal
-        self.llm_client = llm_client
-        self.embedding_func = embedding_func
+        self.llm_config = llm_config
+        self.embedding_config = embedding_config
         
         # Initialize components
         self.cm_generator = None
         self.graph_builder = None
+        self.llm_client = None
+        self.embedding_func = None
     
-    def _initialize_components(self):
-        """Initialize cognitive map generator and graph builder."""
-        if not self.llm_client:
-            raise ValueError("LLM client is required for blueprint generation")
+    def _initialize_components(self, llm_config=None, embedding_config=None):
+        """Initialize cognitive map generator and graph builder from config."""
+        # Use provided config or fall back to stored config
+        llm_config = llm_config or self.llm_config
+        embedding_config = embedding_config or self.embedding_config
+        
+        if not llm_config:
+            raise ValueError("LLM configuration is required for blueprint generation")
+        
+        # Create LLM client from configuration
+        self.llm_client = LLMInterface(
+            provider=llm_config.get("provider", "ollama"),
+            model=llm_config.get("model", "aya-expanse"),
+            **llm_config.get("kwargs", {})
+        )
+        
+        # Create embedding function from configuration
+        def embedding_func(text: str) -> list:
+            if isinstance(embedding_config, dict) and "model" in embedding_config:
+                return get_text_embedding(text, embedding_config["model"])
+            else:
+                return get_text_embedding(text, embedding_config)
+        
         if not self.cm_generator:
             self.cm_generator = DocumentCognitiveMapGenerator(
                 self.llm_client, self.session_factory, worker_count=3
             )
             self.graph_builder = NarrativeKnowledgeGraphBuilder(
-                self.llm_client, self.embedding_func, self.session_factory
+                self.llm_client, embedding_func, self.session_factory
             )
 
     @property
@@ -96,13 +119,28 @@ class BlueprintGenerationTool(BaseTool):
                     "description": "Force regeneration even if up-to-date",
                     "default": False
                 },
-                "llm_client": {
+                "llm_config": {
                     "type": "object",
-                    "description": "LLM client instance for blueprint generation"
+                    "description": "LLM configuration for blueprint generation",
+                    "properties": {
+                        "provider": {
+                            "type": "string",
+                            "description": "LLM provider name (openai, ollama, gemini, etc.)"
+                        },
+                        "model": {
+                            "type": "string", 
+                            "description": "Model name to use for generation"
+                        },
+                        "kwargs": {
+                            "type": "object",
+                            "description": "Additional provider-specific parameters"
+                        }
+                    },
+                    "required": ["provider", "model"]
                 },
-                "embedding_func": {
+                "embedding_config": {
                     "type": "object",
-                    "description": "Embedding function for vector operations"
+                    "description": "Embedding configuration for vector operations"
                 }
             }
         }
@@ -162,20 +200,20 @@ class BlueprintGenerationTool(BaseTool):
             source_data_ids = input_data.get("source_data_ids")
             force_regenerate = input_data.get("force_regenerate", False)
             
-            # Get LLM client from input or use provided one
-            llm_client = input_data.get("llm_client", self.llm_client)
-            embedding_func = input_data.get("embedding_func", self.embedding_func)
+            # Get LLM config from input or use provided one
+            llm_config = input_data.get("llm_config", self.llm_config)
+            embedding_config = input_data.get("embedding_config", self.embedding_config)
             
-            if not llm_client:
+            if not llm_config:
                 return ToolResult(
                     success=False,
-                    error_message="LLM client is required for blueprint generation"
+                    error_message="LLM configuration is required for blueprint generation"
                 )
             
-            # Initialize components with provided clients
-            self.llm_client = llm_client
-            self.embedding_func = embedding_func
-            self._initialize_components()
+            # Initialize components with provided configurations
+            self.llm_config = llm_config
+            self.embedding_config = embedding_config
+            self._initialize_components(llm_config, embedding_config)
             
             self.logger.info(f"Starting blueprint generation for topic: {topic_name}")
             
