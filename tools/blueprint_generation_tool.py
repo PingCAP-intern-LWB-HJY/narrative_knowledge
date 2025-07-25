@@ -8,8 +8,7 @@ BlueprintGenerationTool - Creates analysis blueprints for topics:
 """
 
 import hashlib
-from typing import Dict, Any, List, Optional
-import logging
+from typing import Dict, Any, List, Optional, Callable
 
 from tools.base import BaseTool, ToolResult
 from knowledge_graph.models import SourceData, AnalysisBlueprint
@@ -41,20 +40,22 @@ class BlueprintGenerationTool(BaseTool):
         reused_existing (bool): Whether existing blueprint was reused
     """
     
-    def __init__(self, session_factory=None, llm_client=None, embedding_func=None):
+    def __init__(self, session_factory=None, llm_client=None, embedding_func: Optional[Callable] = None):
         super().__init__(session_factory=session_factory)
         self.session_factory = session_factory or SessionLocal
         self.llm_client = llm_client
         self.embedding_func = embedding_func
         
         # Initialize components
-        self.cm_generator = None
-        self.graph_builder = None
+        self.cm_generator: Optional[DocumentCognitiveMapGenerator] = None
+        self.graph_builder: Optional[NarrativeKnowledgeGraphBuilder] = None
     
     def _initialize_components(self):
         """Initialize cognitive map generator and graph builder."""
         if not self.llm_client:
             raise ValueError("LLM client is required for blueprint generation")
+        if self.embedding_func is None:
+            raise ValueError("Embedding function need to be Callable for blueprint generation")
         if not self.cm_generator:
             self.cm_generator = DocumentCognitiveMapGenerator(
                 self.llm_client, self.session_factory, worker_count=3
@@ -203,7 +204,7 @@ class BlueprintGenerationTool(BaseTool):
                     existing_blueprint = db.query(AnalysisBlueprint).filter(
                         AnalysisBlueprint.topic_name == topic_name,
                         AnalysisBlueprint.status == "ready",
-                        AnalysisBlueprint.source_data_version_hash == version_hash
+                        AnalysisBlueprint.source_data_version_hash == version_hash  # ??
                     ).first()
                     
                     if existing_blueprint:
@@ -231,7 +232,7 @@ class BlueprintGenerationTool(BaseTool):
                     blueprint = AnalysisBlueprint(
                         topic_name=topic_name,
                         status="generating",
-                        source_data_version_hash="",
+                        source_data_version_hash="",    # ??
                         contributing_source_data_ids=[]
                     )
                     db.add(blueprint)
@@ -246,6 +247,10 @@ class BlueprintGenerationTool(BaseTool):
             try:
                 # Convert source data to document format
                 documents = self._convert_source_data_to_documents(source_data_list)
+                
+                # Ensure components are properly initialized
+                if not self.cm_generator or not self.graph_builder:
+                    raise ValueError("Required components not initialized")
                 
                 # Generate cognitive maps for all documents
                 self.logger.info(f"Generating cognitive maps for {len(documents)} documents")
@@ -279,11 +284,12 @@ class BlueprintGenerationTool(BaseTool):
                 
                 # Prepare summary
                 processing_items = blueprint_result.processing_items or {}
+                processing_instructions = blueprint_result.processing_instructions or ""
                 summary = {
                     "canonical_entities_count": len(processing_items.get("canonical_entities", {})),
                     "key_patterns_count": len(processing_items.get("key_patterns", {})),
                     "global_timeline_events": len(processing_items.get("global_timeline", [])),
-                    "processing_instructions_length": len(blueprint_result.processing_instructions or ""),
+                    "processing_instructions_length": len(str(processing_instructions)),
                     "cognitive_maps_used": len(cognitive_maps)
                 }
                 

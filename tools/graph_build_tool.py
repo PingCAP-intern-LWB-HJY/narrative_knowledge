@@ -6,7 +6,7 @@ GraphBuildTool - Extracts knowledge from documents and adds to the global graph 
 - Maps to: KnowledgeGraphBuilder.build logic, enhanced to use AnalysisBlueprint as context
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Callable
 import logging
 
 from tools.base import BaseTool, ToolResult
@@ -21,9 +21,11 @@ class GraphBuildTool(BaseTool):
     Extracts knowledge from a document and builds the knowledge graph.
     
     Input Schema:
-        source_data_id (str): ID of the SourceData to process
+        source_data_id (str): ID of the SourceData to process (single document)
+        source_data_ids (array): Array of SourceData IDs to process (batch)
         blueprint_id (str): ID of the AnalysisBlueprint to use as context
-        force_reprocess (bool, optional): Force reprocessing even if already processed
+        topic_name (str): Name of topic to process all pending documents
+        force_regenerate (bool, optional): Force regeneration even if already processed
         llm_client: LLM client instance (required)
         embedding_func: Embedding function (optional)
     
@@ -37,20 +39,19 @@ class GraphBuildTool(BaseTool):
         status (str): Processing status
     """
     
-    def __init__(self, session_factory=None, llm_client=None, embedding_func=None):
+    def __init__(self, session_factory=None, llm_client=None, embedding_func=None, worker_count: int = 3):
         super().__init__(session_factory=session_factory)
         self.session_factory = session_factory or SessionLocal
         self.llm_client = llm_client
         self.embedding_func = embedding_func
+        self.worker_count = worker_count
         
-        # Initialize components
-        self.graph_builder = None
-        self.cm_generator = None
-    
     def _initialize_components(self):
         """Initialize graph builder and cognitive map generator."""
         if not self.llm_client:
             raise ValueError("LLM client is required for graph building")
+        if self.embedding_func is None:
+            raise ValueError("Embedding function need to be Callable for blueprint generation")
         if not self.graph_builder:
             self.graph_builder = NarrativeKnowledgeGraphBuilder(
                 self.llm_client, self.embedding_func, self.session_factory
@@ -91,6 +92,21 @@ class GraphBuildTool(BaseTool):
                     }
                 },
                 {
+                    "title": "Batch Document Processing",
+                    "required": ["blueprint_id", "source_data_ids"],
+                    "properties": {
+                        "blueprint_id": {
+                            "type": "string",
+                            "description": "ID of the AnalysisBlueprint to use"
+                        },
+                        "source_data_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Array of SourceData IDs to process"
+                        }
+                    }
+                },
+                {
                     "title": "Batch Topic Processing",
                     "required": ["topic_name"],
                     "properties": {
@@ -107,9 +123,9 @@ class GraphBuildTool(BaseTool):
                 }
             ],
             "properties": {
-                "force_reprocess": {
+                "force_regenerate": {
                     "type": "boolean",
-                    "description": "Force reprocessing even if already processed",
+                    "description": "Force regeneration even if already processed",
                     "default": False
                 },
                 "llm_client": {
@@ -166,8 +182,9 @@ class GraphBuildTool(BaseTool):
         Args:
             input_data: Dictionary containing either:
                 - Single document: source_data_id + blueprint_id
-                - Batch processing: topic_name (+ optional source_data_ids)
-                - force_reprocess: Whether to force reprocessing
+                - Batch documents: source_data_ids + blueprint_id
+                - Batch topic: topic_name (+ optional source_data_ids)
+                - force_regenerate: Whether to force regeneration
                 - llm_client: LLM client instance (required)
                 - embedding_func: Embedding function (optional)
                 
@@ -175,7 +192,7 @@ class GraphBuildTool(BaseTool):
             ToolResult with graph building results
         """
         try:
-            force_reprocess = input_data.get("force_reprocess", False)
+            force_regenerate = input_data.get("force_regenerate", False)
             
             # Get LLM client from input or use provided one
             llm_client = input_data.get("llm_client", self.llm_client)
@@ -198,19 +215,26 @@ class GraphBuildTool(BaseTool):
                 return self._process_single_document(
                     input_data["blueprint_id"], 
                     input_data["source_data_id"], 
-                    force_reprocess
+                    force_regenerate
+                )
+            elif "blueprint_id" in input_data and "source_data_ids" in input_data:
+                # Batch document processing with specific IDs
+                return self._process_batch_with_blueprint(
+                    input_data["blueprint_id"],
+                    input_data["source_data_ids"],
+                    force_regenerate
                 )
             elif "topic_name" in input_data:
                 # Batch topic processing
                 return self._process_topic_batch(
                     input_data["topic_name"],
                     input_data.get("source_data_ids"),
-                    force_reprocess
+                    force_regenerate
                 )
             else:
                 return ToolResult(
                     success=False,
-                    error_message="Invalid input: must provide either (blueprint_id + source_data_id) or topic_name"
+                    error_message="Invalid input: must provide either (blueprint_id + source_data_id), (blueprint_id + source_data_ids), or topic_name"
                 )
                 
         except Exception as e:
@@ -220,14 +244,14 @@ class GraphBuildTool(BaseTool):
                 error_message=str(e)
             )
     
-    def _process_single_document(self, blueprint_id: str, source_data_id: str, force_reprocess: bool = False) -> ToolResult:
+    def _process_single_document(self, blueprint_id: str, source_data_id: str, force_regenerate: bool = False) -> ToolResult:
         """
         Process a single document with a given blueprint.
         
         Args:
             blueprint_id: ID of the AnalysisBlueprint to use
             source_data_id: ID of the SourceData to process
-            force_reprocess: Whether to force reprocessing
+            force_regenerate: Whether to force regeneration
             
         Returns:
             ToolResult with processing results
@@ -264,7 +288,7 @@ class GraphBuildTool(BaseTool):
                     )
                 
                 # Check if already processed and not forcing reprocess
-                if not force_reprocess and source_data.status == "graph_completed":
+                if not force_regenerate and source_data.status == "graph_completed":
                     self.logger.info(f"SourceData already processed: {source_data_id}")
                     return ToolResult(
                         success=True,
@@ -320,14 +344,133 @@ class GraphBuildTool(BaseTool):
                 error_message=str(e)
             )
     
-    def _process_topic_batch(self, topic_name: str, source_data_ids: Optional[List[str]] = None, force_reprocess: bool = False) -> ToolResult:
+    def _process_batch_with_blueprint(self, blueprint_id: str, source_data_ids: List[str], force_regenerate: bool = False) -> ToolResult:
+        """
+        Process a batch of specific documents with a given blueprint.
+        
+        Args:
+            blueprint_id: ID of the AnalysisBlueprint to use
+            source_data_ids: List of SourceData IDs to process
+            force_regenerate: Whether to force regeneration
+            
+        Returns:
+            ToolResult with batch processing results
+        """
+        try:
+            self.logger.info(f"Starting batch processing with blueprint {blueprint_id}")
+            
+            with self.session_factory() as db:
+                # Get blueprint
+                blueprint = db.query(AnalysisBlueprint).filter(
+                    AnalysisBlueprint.id == blueprint_id
+                ).first()
+                
+                if not blueprint:
+                    return ToolResult(
+                        success=False,
+                        error_message=f"AnalysisBlueprint not found: {blueprint_id}"
+                    )
+                
+                if blueprint.status != "ready":
+                    return ToolResult(
+                        success=False,
+                        error_message=f"Blueprint is not ready (status: {blueprint.status})"
+                    )
+                
+                # Get source data
+                source_data_list = db.query(SourceData).filter(
+                    SourceData.id.in_(source_data_ids)
+                ).all()
+                
+                if not source_data_list:
+                    return ToolResult(
+                        success=False,
+                        error_message=f"No source data found for provided IDs"
+                    )
+                
+                # Process each document
+                results = []
+                total_entities = 0
+                total_relationships = 0
+                total_triplets = 0
+                processed_count = 0
+                failed_count = 0
+                
+                for source_data in source_data_list:
+                    # Skip if already processed and not forcing reprocess
+                    if not force_regenerate and source_data.status == "graph_completed":
+                        continue
+                    
+                    self.logger.info(f"Processing document: {source_data.id}")
+                    
+                    try:
+                        result = self._process_single_document(blueprint.id, source_data.id, force_regenerate)
+                        
+                        if result.success:
+                            processed_count += 1
+                            total_entities += result.data.get("entities_created", 0)
+                            total_relationships += result.data.get("relationships_created", 0)
+                            total_triplets += result.data.get("triplets_extracted", 0)
+                            results.append({
+                                "source_data_id": source_data.id,
+                                "status": "success",
+                                "entities_created": result.data.get("entities_created", 0),
+                                "relationships_created": result.data.get("relationships_created", 0),
+                                "triplets_extracted": result.data.get("triplets_extracted", 0)
+                            })
+                        else:
+                            failed_count += 1
+                            results.append({
+                                "source_data_id": source_data.id,
+                                "status": "failed",
+                                "error": result.error_message
+                            })
+                            
+                    except Exception as e:
+                        failed_count += 1
+                        results.append({
+                            "source_data_id": source_data.id,
+                            "status": "failed",
+                            "error": str(e)
+                        })
+                
+                self.logger.info(
+                    f"Batch processing completed with blueprint {blueprint_id}: "
+                    f"{processed_count} succeeded, {failed_count} failed"
+                )
+                
+                return ToolResult(
+                    success=True,
+                    data={
+                        "blueprint_id": blueprint_id,
+                        "processed_count": processed_count,
+                        "failed_count": failed_count,
+                        "total_entities_created": total_entities,
+                        "total_relationships_created": total_relationships,
+                        "total_triplets_extracted": total_triplets,
+                        "results": results
+                    },
+                    metadata={
+                        "blueprint_id": blueprint_id,
+                        "source_data_count": len(source_data_list)
+                    }
+                )
+                
+        except Exception as e:
+            self.logger.error(f"Batch processing failed: {e}")
+            return ToolResult(
+                success=False,
+                error_message=str(e)
+            )
+
+    def _process_topic_batch(self, topic_name: str, source_data_ids: Optional[List[str]] = None, force_regenerate: bool = False) -> ToolResult:
         """
         Process a batch of documents for a topic.
         
         Args:
             topic_name: Name of the topic to process
             source_data_ids: Optional list of specific source data IDs to process
-            force_reprocess: Whether to force reprocessing
+            force_regenerate: Whether to force regeneration
             
         Returns:
             ToolResult with batch processing results
@@ -374,14 +517,14 @@ class GraphBuildTool(BaseTool):
                 failed_count = 0
                 
                 for source_data in source_data_list:
-                    # Skip if already processed and not forcing reprocess
-                    if not force_reprocess and source_data.status == "graph_completed":
+                    # Skip if already processed and not forcing regeneration
+                    if not force_regenerate and source_data.status == "graph_completed":
                         continue
                     
                     self.logger.info(f"Processing document: {source_data.id}")
                     
                     try:
-                        result = self._process_single_document(blueprint.id, source_data.id, force_reprocess)
+                        result = self._process_single_document(blueprint.id, source_data.id, force_regenerate)
                         
                         if result.success:
                             processed_count += 1
@@ -458,12 +601,12 @@ class GraphBuildTool(BaseTool):
             
             # Get cognitive map for the document (if exists)
             cognitive_maps = self.cm_generator.get_cognitive_maps_for_topic(
-                source_data.topic_name
+                source_data.topic_name # type: ignore
             )
-            document_cognitive_map = None
+            document_cognitive_map = {}
             
             for cm in cognitive_maps:
-                if cm.document_id == source_data.id:
+                if str(cm.document_id) == str(source_data.id):
                     # Convert DocumentSummary to cognitive map format
                     try:
                         business_context = cm.business_context or "{}"
@@ -485,7 +628,7 @@ class GraphBuildTool(BaseTool):
             
             # Extract triplets using blueprint context
             triplets = self.graph_builder.extract_triplets_from_document(
-                source_data.topic_name,
+                source_data.topic_name, # type: ignore
                 document,
                 blueprint,
                 document_cognitive_map
@@ -506,7 +649,7 @@ class GraphBuildTool(BaseTool):
             
             # Convert triplets to graph and save to database
             entities_created, relationships_created = self.graph_builder.convert_triplets_to_graph(
-                triplets, source_data.id
+                triplets, str(source_data.id)
             )
             
             self.logger.info(

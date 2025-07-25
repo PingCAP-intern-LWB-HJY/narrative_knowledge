@@ -78,9 +78,9 @@ class DocumentETLTool(BaseTool):
                     "description": "Custom metadata to attach to the document",
                     "default": {}
                 },
-                "force_reprocess": {
+                "force_regenerate": {
                     "type": "boolean",
-                    "description": "Whether to force reprocessing if SourceData already exists",
+                    "description": "Whether to force regeneration if SourceData already exists",
                     "default": False
                 },
                 "link": {
@@ -149,7 +149,7 @@ class DocumentETLTool(BaseTool):
                 - file_path: Path to the document file
                 - topic_name: Topic name for grouping
                 - metadata: Optional custom metadata
-                - force_reprocess: Whether to force reprocessing
+                - force_regenerate: Whether to force regeneration
                 - link: Optional document link/URL
                 - original_filename: Optional original filename
                 
@@ -160,7 +160,7 @@ class DocumentETLTool(BaseTool):
             file_path = Path(input_data["file_path"])
             topic_name = input_data["topic_name"]
             metadata = input_data.get("metadata", {})
-            force_reprocess = input_data.get("force_reprocess", False)
+            force_regenerate = input_data.get("force_regenerate", False)
             link = input_data.get("link", f"file://{file_path}")
             original_filename = input_data.get("original_filename", file_path.name)
             
@@ -202,7 +202,7 @@ class DocumentETLTool(BaseTool):
                     db.flush()
                 
                 # Check if already processed and not forcing reprocess
-                if not force_reprocess:
+                if not force_regenerate:
                     existing_source_data = db.query(SourceData).filter(
                         SourceData.raw_data_source_id == raw_data_source.id
                     ).first()
@@ -225,14 +225,19 @@ class DocumentETLTool(BaseTool):
                         )
                 
                 # Update status to processing
-                raw_data_source.status = "etl_processing"
+                raw_data_source.status = "etl_processing" # type: ignore
                 db.commit()
                 
                 # Extract content from file
                 try:
                     extraction_result = extract_source_data(str(file_path))
-                    content = extraction_result.get("content", "")
-                    source_type = extraction_result.get("file_type", "unknown")
+                    # Handle both string and dict return types safely
+                    if isinstance(extraction_result, dict):
+                        content = extraction_result.get("content", "")
+                        source_type = extraction_result.get("file_type", "text/plain")
+                    else:
+                        content = str(extraction_result)
+                        source_type = "text/plain"
                     # Normalize content type to match job standards
                     if source_type == "pdf":
                         source_type = "application/pdf"
@@ -247,7 +252,7 @@ class DocumentETLTool(BaseTool):
                 except Exception as e:
                     self.logger.error(f"Failed to extract content from {file_path}: {e}")
                     # Update status to failed
-                    raw_data_source.status = "etl_failed"
+                    raw_data_source.status = "etl_failed" # type: ignore
                     db.commit()
                     return ToolResult(
                         success=False,
@@ -286,7 +291,7 @@ class DocumentETLTool(BaseTool):
                 )
                 
                 # Update RawDataSource status
-                raw_data_source.status = "etl_completed"
+                raw_data_source.status = "etl_completed" # type: ignore
                 
                 db.add(source_data)
                 db.commit()

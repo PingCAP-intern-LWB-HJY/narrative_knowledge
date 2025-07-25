@@ -188,7 +188,7 @@ class BaseTool(ABC):
         """
         
         execution_id = execution_id or str(uuid.uuid4())
-        start_time = datetime.now(timezone.utc).isoformat()
+        start_time = datetime.now(timezone.utc)
         
         self.logger.info(f"Starting tool execution: {self.tool_name} ({execution_id})")
         
@@ -205,7 +205,7 @@ class BaseTool(ABC):
             result = self.execute(input_data)
             
             # Add tracking info
-            end_time = datetime.now(timezone.utc).isoformat()
+            end_time = datetime.now(timezone.utc)
             result.execution_id = execution_id
             result.duration_seconds = (end_time - start_time).total_seconds()
             
@@ -214,7 +214,7 @@ class BaseTool(ABC):
             return result
             
         except Exception as e:
-            end_time = datetime.now(timezone.utc).isoformat()
+            end_time = datetime.now(timezone.utc)
             duration = (end_time - start_time).total_seconds()
             
             self.logger.error(f"Tool execution failed: {self.tool_name} ({execution_id}) - {e}")

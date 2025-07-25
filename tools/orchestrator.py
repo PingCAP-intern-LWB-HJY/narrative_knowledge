@@ -69,7 +69,12 @@ class PipelineOrchestrator:
         
         tool_keys = self.standard_pipelines[pipeline_name]
         tools = [self.tool_key_mapping[key] for key in tool_keys]
-        return self.execute_custom_pipeline(tools, context, execution_id)
+        
+        # Add pipeline name to context for scenario identification
+        context_with_pipeline = context.copy()
+        context_with_pipeline["_pipeline_name"] = pipeline_name
+        
+        return self.execute_custom_pipeline(tools, context_with_pipeline, execution_id)
     
     def execute_custom_pipeline(self, tools: List[str], context: Dict[str, Any], execution_id: Optional[str] = None) -> ToolResult:
         """
@@ -151,7 +156,7 @@ class PipelineOrchestrator:
             )
     
     def select_default_pipeline(self, target_type: str, topic_name: str, file_count: int, is_new_topic: bool, 
-                              input_type: str = "document", file_extension: str = None) -> str:
+                              input_type: str = "document", file_extension: str = "") -> str:
         """
         Select appropriate default pipeline based on context.
         
@@ -239,46 +244,44 @@ class PipelineOrchestrator:
         
         elif tool_key == "graph_build":
             topic_name = context.get("topic_name")
+            source_data_ids = context.get("source_data_ids", [])
             
-            # Check if we have ETL and/or Blueprint from pipeline
-            has_etl = any(self.tool_key_mapping.get("etl") in tools for tools in [previous_results.keys()])
-            has_blueprint = any(self.tool_key_mapping.get("blueprint_gen") in tools for tools in [previous_results.keys()])
+            # Ensure we have source_data_ids
+            if not source_data_ids and context.get("source_data_id"):
+                source_data_ids = [context.get("source_data_id")]
             
-            # Case 1: We have ETL/Blueprint tools in pipeline (with results)
-            if has_etl or has_blueprint:
-                source_data_ids = context.get("source_data_ids", [])
-                blueprint_id = context.get("blueprint_id")
-                
-                # Fill missing IDs from context
-                if not source_data_ids and context.get("source_data_id"):
-                    source_data_ids = [context.get("source_data_id")]
-                
-                if source_data_ids and blueprint_id:
-                    return {
-                        "source_data_ids": source_data_ids,
-                        "blueprint_id": blueprint_id,
-                        "force_regenerate": context.get("force_regenerate", False),
-                        "llm_client": context.get("llm_client"),
-                        "embedding_func": context.get("embedding_func")
-                    }
-                elif source_data_ids and len(source_data_ids) == 1:
-                    return {
-                        "source_data_id": source_data_ids[0],
-                        "force_regenerate": context.get("force_regenerate", False),
-                        "llm_client": context.get("llm_client"),
-                        "embedding_func": context.get("embedding_func")
-                    }
-                else:
-                    return {
-                        "topic_name": topic_name,
-                        "force_regenerate": context.get("force_regenerate", False),
-                        "llm_client": context.get("llm_client"),
-                        "embedding_func": context.get("embedding_func")
-                    }
+            # Determine blueprint_id based on context
+            blueprint_id = context.get("blueprint_id")
             
-            # Case 2: No ETL/Blueprint (graph_build-only pipelines)
+            # If no blueprint_id provided, check for existing one
+            if not blueprint_id and topic_name:
+                blueprint_id = self.get_existing_blueprint_id(topic_name)
+            
+            # Build input based on available data
+            if source_data_ids and len(source_data_ids) == 1:
+                # Single document processing
+                input_data = {
+                    "source_data_id": source_data_ids[0],
+                    "force_regenerate": context.get("force_regenerate", False),
+                    "llm_client": context.get("llm_client"),
+                    "embedding_func": context.get("embedding_func")
+                }
+                if blueprint_id:
+                    input_data["blueprint_id"] = blueprint_id
+                return input_data
+            
+            elif source_data_ids and blueprint_id:
+                # Batch processing with specific blueprint
+                return {
+                    "source_data_ids": source_data_ids,
+                    "blueprint_id": blueprint_id,
+                    "force_regenerate": context.get("force_regenerate", False),
+                    "llm_client": context.get("llm_client"),
+                    "embedding_func": context.get("embedding_func")
+                }
+            
             else:
-                # Default to topic-based processing
+                # Topic-based processing
                 return {
                     "topic_name": topic_name,
                     "force_regenerate": context.get("force_regenerate", False),
@@ -315,36 +318,27 @@ class PipelineOrchestrator:
             updated_context["topic_name"] = result.metadata.get("topic_name")
         
         return updated_context
-    
-    def execute_scenario(self, scenario: str, context: Dict[str, Any], execution_id: Optional[str] = None) -> ToolResult:
+
+    def get_existing_blueprint_id(self, topic_name: str) -> Optional[str]:
         """
-        Execute a specific scenario with appropriate pipeline.
+        Look up the latest ready blueprint for a topic.
         
         Args:
-            scenario: One of 'single_doc_existing', 'batch_doc_existing', 'new_topic'
-            context: Context data for the scenario
-            execution_id: Optional execution ID
+            topic_name: Name of the topic
             
         Returns:
-            ToolResult with scenario execution results
+            Blueprint ID if found, None otherwise
         """
-        scenario_to_pipeline = {
-            "single_doc_existing": "single_doc_existing_topic",
-            "batch_doc_existing": "batch_doc_existing_topic", 
-            "new_topic": "new_topic_batch"
-        }
+        from knowledge_graph.models import AnalysisBlueprint
         
-        if scenario not in scenario_to_pipeline:
-            return ToolResult(
-                success=False,
-                error_message=f"Scenario '{scenario}' not supported"
-            )
-        
-        return self.execute_pipeline(
-            scenario_to_pipeline[scenario], 
-            context, 
-            execution_id
-        )
+        with self.session_factory() as db:
+            blueprint = db.query(AnalysisBlueprint).filter(
+                AnalysisBlueprint.topic_name == topic_name,
+                AnalysisBlueprint.status == "ready"
+            ).order_by(AnalysisBlueprint.created_at.desc()).first()
+            
+            return blueprint.id if blueprint else None
+
     
     def execute_with_process_strategy(self, request_data: Dict[str, Any], execution_id: Optional[str] = None) -> ToolResult:
         """
@@ -366,7 +360,13 @@ class PipelineOrchestrator:
         # Explicit pipeline execution
         if "pipeline" in process_strategy:
             pipeline = process_strategy["pipeline"]
-            tools = [self.tool_key_mapping.get(tool_key, tool_key) for tool_key in pipeline]
+            try:
+                tools = [self.tool_key_mapping[key] for key in pipeline]
+            except KeyError as e:
+                return ToolResult(
+                    success=False,
+                    error_message=f"Invalid tool key {e} in pipeline configuration"
+                )
             return self.execute_custom_pipeline(tools, request_data, execution_id)
         
         # Default pipeline selection

@@ -7,9 +7,7 @@ to use the tool-based pipeline system as described in the design document.
 
 import logging
 from typing import Dict, Any, List, Optional
-from pathlib import Path
-import tempfile
-import os
+
 import uuid
 
 from tools.orchestrator import PipelineOrchestrator
@@ -75,7 +73,8 @@ class PipelineAPIIntegration:
             "force_regenerate": request_data.get("force_regenerate", False),
             "topic_name": metadata.get("topic_name"),
             "link": metadata.get("link"),
-            "database_uri": metadata.get("database_uri")
+            "database_uri": metadata.get("database_uri"),
+            "is_new_topic": metadata.get("is_new_topic", False)
         }
         
         # Handle file-specific parameters if files are provided
@@ -86,7 +85,7 @@ class PipelineAPIIntegration:
             
         return context
     
-    def process_single_file(self, file_path: str, topic_name: str, metadata: Dict[str, Any] = None,
+    def process_single_file(self, file_path: str, topic_name: str, metadata: Optional[Dict[str, Any]] = None,
                           llm_client=None, embedding_func=None) -> ToolResult:
         """
         Process a single file using the appropriate pipeline.
@@ -123,7 +122,7 @@ class PipelineAPIIntegration:
         
         return self.orchestrator.execute_with_process_strategy(context)
     
-    def process_batch_files(self, file_paths: List[str], topic_name: str, metadata: Dict[str, Any] = None,
+    def process_batch_files(self, file_paths: List[str], topic_name: str, metadata: Optional[Dict[str, Any]] = None,
                           llm_client=None, embedding_func=None) -> ToolResult:
         """
         Process multiple files using batch pipeline.
