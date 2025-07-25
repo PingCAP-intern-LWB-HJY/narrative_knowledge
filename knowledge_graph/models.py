@@ -22,6 +22,7 @@ from tidb_vector.sqlalchemy import VectorType
 Base = declarative_base()
 
 
+
 # ============================================================================
 # Core Storage Tables (Keep from existing design)
 # ============================================================================
@@ -278,6 +279,9 @@ class AnalysisBlueprint(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     topic_name = Column(String(255), nullable=False)
 
+    processing_items = Column(
+        JSON, nullable=True
+    )  # canonical_entities, key_patterns, global_timeline, etc.
     processing_instructions = Column(
         Text, nullable=True
     )  # Human-readable processing guidance
@@ -405,3 +409,50 @@ class DocumentSummary(Base):
 
     def __repr__(self):
         return f"<DocumentSummary(doc_id={self.document_id}, topic={self.topic_name})>"
+    
+class GraphBuild(Base):
+    """Graph build status tracking for each topic-source combination"""
+
+    __tablename__ = "graph_build"
+
+    topic_name = Column(String(255), primary_key=True, nullable=False)
+    build_id = Column(String(64), primary_key=True, nullable=False)
+    external_database_uri = Column(
+        String(512), nullable=False, default=""
+    )  # Track external database
+    storage_directory = Column(
+        String(512), nullable=True
+    )  # Directory path where document and metadata are stored
+    doc_link = Column(
+        String(512), nullable=True
+    )  # Document link for easy SourceData lookup
+    status = Column(
+        Enum("uploaded", "pending", "processing", "completed", "failed"),
+        nullable=False,
+        default="uploaded",
+    )
+    created_at = Column(DateTime, default=func.current_timestamp())
+    updated_at = Column(
+        DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+    scheduled_at = Column(
+        DateTime, default=func.current_timestamp(), nullable=False
+    )  # Schedule time for processing, defaults to created_at but can be modified
+    error_message = Column(Text, nullable=True)
+    progress_info = Column(JSON, nullable=True)  # Store build progress details
+
+    # Note: Removed source_data relationship due to multi-database support
+    # The source_data may exist in different databases
+
+    __table_args__ = (
+        Index("idx_graph_build_status_topic", "topic_name"),
+        Index("idx_graph_build_status_source", "build_id"),
+        Index("idx_graph_build_status_status", "status"),
+        Index("idx_graph_build_status_created", "created_at"),
+        Index("idx_graph_build_status_external_db", "external_database_uri"),
+        Index("idx_graph_build_status_doc_link", "doc_link"),
+        Index("idx_graph_build_status_topic_link", "topic_name", "doc_link"),
+    )
+
+    def __repr__(self):
+        return f"<GraphBuild(topic={self.topic_name}, source={self.build_id}, status={self.status})>"
