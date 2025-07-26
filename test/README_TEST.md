@@ -1,12 +1,5 @@
 # Test Script for process_request() Function
 
-This directory contains a comprehensive test suite for testing the `process_request()` function in three different scenarios.
-
-## Files Created
-
-1. `test_process_request.py` - Main test script with three scenarios
-2. `run_tests.sh` - Simple bash runner script
-3. `test_requirements.txt` - Optional dependencies
 
 ## Test Scenarios
 
@@ -25,19 +18,15 @@ This directory contains a comprehensive test suite for testing the `process_requ
 - **Configuration**: `is_new_topic: True`, `batch_processing: True` 
 - **Files**: 2 test documents with unique topic name
 
+### Scenario 4: Memory
+
 ## How to Run the Tests
 
-### Method 1: Direct Python
+### Direct Python
 ```bash
-cd /Users/hjy/Downloads/test
 python3 test_process_request.py
 ```
 
-### Method 2: Using the Runner Script
-```bash
-cd /Users/hjy/Downloads/test
-./run_tests.sh
-```
 
 ## Mock Objects
 
@@ -60,7 +49,3 @@ The test script automatically:
 - Creates temporary test files
 - Cleans up files after execution
 - Provides detailed error messages for debugging
-
-## Dependencies
-
-Basic Python 3.x required. Optional dependencies listed in `test_requirements.txt`.
