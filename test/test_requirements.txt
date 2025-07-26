@@ -1,0 +1,15 @@
+# Test requirements for process_request() testing
+# These are optional dependencies for running the test suite
+
+# Core dependencies (if needed)
+# sqlalchemy  # For database operations
+# pydantic    # For data validation
+# jsonschema  # For input validation
+
+# Mock/testing dependencies
+# pytest      # For advanced testing features
+# pytest-mock # For mocking capabilities
+
+# Development dependencies
+# black       # Code formatting
+# mypy        # Type checking

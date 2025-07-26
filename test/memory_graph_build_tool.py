@@ -8,10 +8,8 @@ replacing the standalone PersonalMemorySystem.process_chat_batch() with pipeline
 import logging
 from typing import Dict, Any, List, Optional
 
-from tools.base import ToolResult
-from tools.graph_build_tool import GraphBuildTool
-from memory_system import PersonalMemorySystem, generate_topic_name_for_personal_memory
-from knowledge_graph.models import SourceData, AnalysisBlueprint
+from base import ToolResult
+from graph_build_tool import GraphBuildTool
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +26,8 @@ class MemoryGraphBuildTool(GraphBuildTool):
     def __init__(self, session_factory=None, llm_client=None, embedding_func=None):
         super().__init__(session_factory, llm_client, embedding_func)
         self.memory_system = None
+        self.llm_client = llm_client
+        self.embedding_func = embedding_func
     
     @property
     def tool_name(self) -> str:
@@ -97,7 +97,7 @@ class MemoryGraphBuildTool(GraphBuildTool):
                 "status": {"type": "string", "description": "Processing status"}
             }
         }
-    
+
     def validate_input(self, input_data: Dict[str, Any]) -> bool:
         """
         Validate input data against the tool's input schema.
@@ -183,17 +183,17 @@ class MemoryGraphBuildTool(GraphBuildTool):
             # Initialize components
             self.llm_client = llm_client
             self.embedding_func = embedding_func
-            self._initialize_components()
+            # self._initialize_components()
             
-            # Initialize memory system
-            memory_system = PersonalMemorySystem(
-                llm_client=llm_client,
-                embedding_func=embedding_func,
-                session_factory=self.session_factory
-            )
+            # # Initialize memory system
+            # memory_system = PersonalMemorySystem(
+            #     llm_client=llm_client,
+            #     embedding_func=embedding_func,
+            #     session_factory=self.session_factory
+            # )
             
-            # Generate topic name for this user
-            topic_name = generate_topic_name_for_personal_memory(user_id)
+            # # Generate topic name for this user
+            # topic_name = generate_topic_name_for_personal_memory(user_id)
             
             # Check if this exact batch was already processed
             if not force_regenerate:
@@ -201,61 +201,61 @@ class MemoryGraphBuildTool(GraphBuildTool):
                 if existing_result:
                     return existing_result
             
-            # Process through memory system (creates SourceData, Blueprint, KnowledgeBlock)
-            memory_result = memory_system.process_chat_batch(chat_messages, user_id)
+            # # Process through memory system (creates SourceData, Blueprint, KnowledgeBlock)
+            # memory_result = memory_system.process_chat_batch(chat_messages, user_id)
             
-            if not memory_result or "source_id" not in memory_result:
-                return ToolResult(
-                    success=False,
-                    error_message="Memory system failed to process chat messages"
-                )
+            # if not memory_result or "source_id" not in memory_result:
+            #     return ToolResult(
+            #         success=False,
+            #         error_message="Memory system failed to process chat messages"
+            #     )
             
-            # Now process the created SourceData through graph building
-            source_data_id = memory_result["source_id"]
+            # # Now process the created SourceData through graph building
+            # source_data_id = memory_result["source_id"]
             
-            # Get the personal blueprint created by memory system
-            with self.session_factory() as db:
-                blueprint = db.query(AnalysisBlueprint).filter(
-                    AnalysisBlueprint.topic_name == topic_name
-                ).order_by(AnalysisBlueprint.created_at.desc()).first()
+            # # Get the personal blueprint created by memory system
+            # with self.session_factory() as db:
+            #     blueprint = db.query(AnalysisBlueprint).filter(
+            #         AnalysisBlueprint.topic_name == topic_name
+            #     ).order_by(AnalysisBlueprint.created_at.desc()).first()
                 
-                if not blueprint:
-                    return ToolResult(
-                        success=False,
-                        error_message=f"No personal blueprint found for topic: {topic_name}"
-                    )
+            #     if not blueprint:
+            #         return ToolResult(
+            #             success=False,
+            #             error_message=f"No personal blueprint found for topic: {topic_name}"
+            #         )
                 
-                blueprint_id = blueprint.id
+            #     blueprint_id = blueprint.id
             
-            # Process through graph building using the parent class
-            graph_result = self._process_single_document(
-                blueprint_id, 
-                source_data_id, 
-                force_regenerate
-            )
+            # # Process through graph building using the parent class
+            # graph_result = self._process_single_document(
+            #     blueprint_id, 
+            #     source_data_id, 
+            #     force_regenerate
+            # )
             
-            if not graph_result.success:
-                return graph_result
+            # if not graph_result.success:
+            #     return graph_result
             
             # Combine results
-            final_result = {
-                "user_id": user_id,
-                "topic_name": topic_name,
-                "source_data_id": source_data_id,
-                "knowledge_block_id": memory_result.get("knowledge_block_id"),
-                "entities_created": graph_result.data.get("entities_created", 0),
-                "relationships_created": graph_result.data.get("relationships_created", 0),
-                "triplets_extracted": graph_result.data.get("triplets_extracted", 0),
-                "status": "completed"
-            }
-            
+            # final_result = {
+            #     "user_id": user_id,
+            #     "topic_name": topic_name,
+            #     "source_data_id": source_data_id,
+            #     "knowledge_block_id": memory_result.get("knowledge_block_id"),
+            #     "entities_created": graph_result.data.get("entities_created", 0),
+            #     "relationships_created": graph_result.data.get("relationships_created", 0),
+            #     "triplets_extracted": graph_result.data.get("triplets_extracted", 0),
+            #     "status": "completed"
+            # }
+            print("modeling memory_graph_build_tool!\n")
             return ToolResult(
                 success=True,
-                data=final_result,
+                data=None,
                 metadata={
                     "user_id": user_id,
                     "message_count": len(chat_messages),
-                    "topic_name": topic_name
+                    "topic_name": f"topic_name for {user_id}"
                 }
             )
             
@@ -281,39 +281,40 @@ class MemoryGraphBuildTool(GraphBuildTool):
             import hashlib
             import json
             
-            # Generate content hash for deduplication
-            content_json = json.dumps(chat_messages, sort_keys=True, ensure_ascii=False)
-            content_hash = hashlib.sha256(content_json.encode("utf-8")).hexdigest()
+            # # Generate content hash for deduplication
+            # content_json = json.dumps(chat_messages, sort_keys=True, ensure_ascii=False)
+            # content_hash = hashlib.sha256(content_json.encode("utf-8")).hexdigest()
             
-            topic_name = generate_topic_name_for_personal_memory(user_id)
+            # topic_name = generate_topic_name_for_personal_memory(user_id)
             
-            with self.session_factory() as db:
-                # Check for existing SourceData with this content hash
-                source_data = db.query(SourceData).filter(
-                    SourceData.topic_name == topic_name,
-                    SourceData.attributes.contains({"content_hash": content_hash})
-                ).first()
+            # with self.session_factory() as db:
+            #     # Check for existing SourceData with this content hash
+            #     source_data = db.query(SourceData).filter(
+            #         SourceData.topic_name == topic_name,
+            #         SourceData.attributes.contains({"content_hash": content_hash})
+            #     ).first()
                 
-                if source_data and source_data.status == "graph_completed":
-                    return ToolResult(
-                        success=True,
-                        data={
-                            "user_id": user_id,
-                            "topic_name": topic_name,
-                            "source_data_id": source_data.id,
-                            "entities_created": 0,
-                            "relationships_created": 0,
-                            "triplets_extracted": 0,
-                            "status": "already_processed",
-                            "reused_existing": True
-                        },
-                        metadata={"user_id": user_id, "message_count": len(chat_messages)}
-                    )
+            #     if source_data and source_data.status == "graph_completed":
+            #         return ToolResult(
+            #             success=True,
+            #             data={
+            #                 "user_id": user_id,
+            #                 "topic_name": topic_name,
+            #                 "source_data_id": source_data.id,
+            #                 "entities_created": 0,
+            #                 "relationships_created": 0,
+            #                 "triplets_extracted": 0,
+            #                 "status": "already_processed",
+            #                 "reused_existing": True
+            #             },
+            #             metadata={"user_id": user_id, "message_count": len(chat_messages)}
+            #         )
+            print("check_existing_processing!\n")
             
             return None
             
         except Exception as e:
-            self.logger.warning(f"Error checking existing processing: {e}")
+            print(f"Error checking existing processing: {e}")
             return None
 
 

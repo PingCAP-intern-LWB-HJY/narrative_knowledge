@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import uuid
 from enum import Enum
 
-from setting.db import SessionLocal
+# from setting.db import SessionLocal
 
 
 class ExecutionStatus(Enum):

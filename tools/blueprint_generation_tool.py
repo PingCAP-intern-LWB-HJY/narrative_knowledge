@@ -142,6 +142,14 @@ class BlueprintGenerationTool(BaseTool):
                 }
             }
         }
+    
+    def validate_input(self, input_data: Dict[str, Any]) -> bool:
+        """Validate input parameters."""
+        topic_name = input_data.get("topic_name")
+        if not topic_name or not isinstance(topic_name, str):
+            return False
+            
+        return True
 
     def execute(self, input_data: Dict[str, Any]) -> ToolResult:
         """
@@ -357,6 +365,4 @@ class BlueprintGenerationTool(BaseTool):
         return documents
 
 
-# Register the tool
-from tools.base import TOOL_REGISTRY
-TOOL_REGISTRY.register(BlueprintGenerationTool())
+# Register the tool - will be handled by orchestrator initialization

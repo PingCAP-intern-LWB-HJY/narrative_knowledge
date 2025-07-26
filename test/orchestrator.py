@@ -7,9 +7,8 @@ from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timezone
 import uuid
 
-from tools.base import ToolResult
-from tools.base import TOOL_REGISTRY
-from setting.db import SessionLocal
+from base import ToolResult
+from base import TOOL_REGISTRY
 
 
 class PipelineOrchestrator:
@@ -23,9 +22,9 @@ class PipelineOrchestrator:
     """
     
     def __init__(self, session_factory=None):
-        self.session_factory = session_factory or SessionLocal
+        self.session_factory = session_factory
         self.logger = logging.getLogger(__name__)
-
+        
         # Auto-register tools
         self._register_tools()
         
@@ -49,7 +48,7 @@ class PipelineOrchestrator:
             "graph_build": "GraphBuildTool",
             "memory_graph_build": "MemoryGraphBuildTool"
         }
-
+    
     def _register_tools(self):
         """Auto-register all available tools."""
         try:
@@ -58,6 +57,8 @@ class PipelineOrchestrator:
             from blueprint_generation_tool import BlueprintGenerationTool
             from graph_build_tool import GraphBuildTool
             from memory_graph_build_tool import MemoryGraphBuildTool
+            
+            
             # Register tools if not already registered
             if not TOOL_REGISTRY.get_tool("DocumentETLTool"):
                 TOOL_REGISTRY.register(DocumentETLTool(session_factory=self.session_factory))
@@ -68,12 +69,12 @@ class PipelineOrchestrator:
             if not TOOL_REGISTRY.get_tool("MemoryGraphBuildTool"):
                 TOOL_REGISTRY.register(MemoryGraphBuildTool(session_factory=self.session_factory))
                 
-            self.logger.info("Tools registered successfully")
+            print("Tools registered successfully")
             
         except ImportError as e:
-            self.logger.warning(f"Could not register all tools: {e}")
+            print(f"Could not register all tools: {e}")
             import traceback
-            self.logger.warning(f"Traceback: {traceback.format_exc()}")
+            print(f"Traceback: {traceback.format_exc()}")
     
     def execute_pipeline(self, pipeline_name: str, context: Dict[str, Any], execution_id: Optional[str] = None) -> ToolResult:
         """
@@ -97,6 +98,7 @@ class PipelineOrchestrator:
         
         tool_keys = self.standard_pipelines[pipeline_name]
         tools = [self.tool_key_mapping[key] for key in tool_keys]
+        print(f"execute pipeline with tools: {tools}\n")
         
         return self.execute_custom_pipeline(tools, context, execution_id)
     
@@ -115,7 +117,7 @@ class PipelineOrchestrator:
         execution_id = execution_id or str(uuid.uuid4())
         start_time = datetime.now(timezone.utc)
         
-        self.logger.info(f"Starting pipeline execution: {execution_id} - {tools}")
+        print(f"Starting pipeline execution: {execution_id} - {tools}")
         
         results = {}
         pipeline_context = context.copy()
@@ -131,7 +133,7 @@ class PipelineOrchestrator:
                 
                 # Prepare input for this tool
                 tool_input = self._prepare_tool_input(tool_name, pipeline_context, results)
-                
+                print(f"tool_input in execute_custom_pipeline: {tool_input}\n")
                 # Validate input if tool has validate_input method
                 if hasattr(tool, 'validate_input'):
                     is_valid = tool.validate_input(tool_input)
@@ -144,7 +146,7 @@ class PipelineOrchestrator:
                         )
                 
                 # Execute tool
-                self.logger.info(f"Executing tool: {tool_name}")
+                print(f"Executing tool: {tool_name}")
                 result = tool.execute_with_tracking(tool_input, f"{execution_id}_{tool_name}")
                 
                 if not result.success:
@@ -158,13 +160,13 @@ class PipelineOrchestrator:
                 results[tool_name] = result
                 pipeline_context = self._update_context(tool_name, pipeline_context, result)
                 
-                self.logger.info(f"Tool completed: {tool_name}")
+                print(f"Tool completed: {tool_name}")
             
             # Calculate duration
             end_time = datetime.now(timezone.utc)
             duration = (end_time - start_time).total_seconds()
             
-            self.logger.info(f"Pipeline execution completed: {execution_id} in {duration:.2f}s")
+            print(f"Pipeline execution completed: {execution_id} in {duration:.2f}s")
             
             return ToolResult(
                 success=True,
@@ -181,7 +183,7 @@ class PipelineOrchestrator:
             end_time = datetime.now(timezone.utc)
             duration = (end_time - start_time).total_seconds()
             
-            self.logger.error(f"Pipeline execution failed: {execution_id} - {e}")
+            print(f"Pipeline execution failed: {execution_id} - {e}")
             
             return ToolResult(
                 success=False,
@@ -206,7 +208,7 @@ class PipelineOrchestrator:
         Returns:
             Name of the default pipeline to use
         """
-        
+        print("selecting default pipeline!\n")
         # Memory pipeline for dialogue history/chat
         if target_type == "personal_memory" or input_type == "dialogue":
             if input_type == "dialogue":
@@ -243,7 +245,7 @@ class PipelineOrchestrator:
         
         # Get tool key for consistent handling
         tool_key = self._get_tool_key(tool_name)
-        
+        print("preparing tool input!\n")
         if tool_key == "etl":
             files = context.get("files", [])
             if files:
@@ -352,7 +354,7 @@ class PipelineOrchestrator:
     def _update_context(self, tool_name: str, context: Dict[str, Any], result: ToolResult) -> Dict[str, Any]:
         """Update context with results from a tool."""
         updated_context = context.copy()
-        
+        print("updating context!\n")
         # Map tool name to key
         tool_key = None
         for key, name in self.tool_key_mapping.items():
@@ -389,16 +391,16 @@ class PipelineOrchestrator:
             
         Returns:
             Blueprint ID if found, None otherwise
-        """
-        from knowledge_graph.models import AnalysisBlueprint
+        # """
+        # from knowledge_graph.models import AnalysisBlueprint
         
-        with self.session_factory() as db:
-            blueprint = db.query(AnalysisBlueprint).filter(
-                AnalysisBlueprint.topic_name == topic_name,
-                AnalysisBlueprint.status == "ready"
-            ).order_by(AnalysisBlueprint.created_at.desc()).first()
+        # with self.session_factory() as db:
+        #     blueprint = db.query(AnalysisBlueprint).filter(
+        #         AnalysisBlueprint.topic_name == topic_name,
+        #         AnalysisBlueprint.status == "ready"
+        #     ).order_by(AnalysisBlueprint.created_at.desc()).first()
             
-            return blueprint.id if blueprint else None
+        return "get_existing_blueprint_id"
 
     
     def execute_with_process_strategy(self, request_data: Dict[str, Any], execution_id: Optional[str] = None) -> ToolResult:
@@ -428,13 +430,14 @@ class PipelineOrchestrator:
                     success=False,
                     error_message=f"Invalid tool key {e} in pipeline configuration"
                 )
+            print("Explicit pipeline execution\n")
             return self.execute_custom_pipeline(tools, request_data, execution_id)
         
         # Default pipeline selection
         topic_name = metadata.get("topic_name")
         file_count = len(request_data.get("files", []))
         is_new_topic = metadata.get("is_new_topic", False)
-        
+        print("Default pipeline selection\n")
         # Determine input type and context
         input_type = "dialogue" if target_type == "personal_memory" else "document"
         if isinstance(request_data.get("input"), str) and not request_data.get("files"):
@@ -444,4 +447,5 @@ class PipelineOrchestrator:
             target_type, topic_name, file_count, is_new_topic, 
             input_type=input_type
         )
+        print(f"Pipeline Name: {pipeline_name}")
         return self.execute_pipeline(pipeline_name, request_data, execution_id)

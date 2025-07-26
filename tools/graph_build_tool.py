@@ -695,6 +695,4 @@ class GraphBuildTool(BaseTool):
         }
 
 
-# Register the tool
-from tools.base import TOOL_REGISTRY
-TOOL_REGISTRY.register(GraphBuildTool())
+# Register the tool - will be handled by orchestrator initialization

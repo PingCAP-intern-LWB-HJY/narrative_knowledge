@@ -10,8 +10,8 @@ from typing import Dict, Any, List, Optional
 
 import uuid
 
-from tools.orchestrator import PipelineOrchestrator
-from tools.base import ToolResult
+from orchestrator import PipelineOrchestrator
+from base import ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -106,89 +106,89 @@ class PipelineAPIIntegration:
             
         return context
     
-    def process_single_file(self, file_path: str, topic_name: str, metadata: Optional[Dict[str, Any]] = None,
-                          llm_client=None, embedding_func=None) -> ToolResult:
-        """
-        Process a single file using the appropriate pipeline.
+#     def process_single_file(self, file_path: str, topic_name: str, metadata: Optional[Dict[str, Any]] = None,
+#                           llm_client=None, embedding_func=None) -> ToolResult:
+#         """
+#         Process a single file using the appropriate pipeline.
         
-        Args:
-            file_path: Path to the file to process
-            topic_name: Topic name for grouping
-            metadata: Optional metadata for the file
-            llm_client: LLM client instance
-            embedding_func: Embedding function
+#         Args:
+#             file_path: Path to the file to process
+#             topic_name: Topic name for grouping
+#             metadata: Optional metadata for the file
+#             llm_client: LLM client instance
+#             embedding_func: Embedding function
             
-        Returns:
-            ToolResult with processing results
-        """
-        context = {
-            "file_path": file_path,
-            "topic_name": topic_name,
-            "metadata": metadata or {},
-            "llm_client": llm_client,
-            "embedding_func": embedding_func
-        }
+#         Returns:
+#             ToolResult with processing results
+#         """
+#         context = {
+#             "file_path": file_path,
+#             "topic_name": topic_name,
+#             "metadata": metadata or {},
+#             "llm_client": llm_client,
+#             "embedding_func": embedding_func
+#         }
         
-        # Determine if this is a new topic or existing
-        from setting.db import SessionLocal
-        from knowledge_graph.models import SourceData
+#         # Determine if this is a new topic or existing
+#         from setting.db import SessionLocal
+#         from knowledge_graph.models import SourceData
         
-        with SessionLocal() as db:
-            existing_count = db.query(SourceData).filter(
-                SourceData.topic_name == topic_name
-            ).count()
+#         with SessionLocal() as db:
+#             existing_count = db.query(SourceData).filter(
+#                 SourceData.topic_name == topic_name
+#             ).count()
             
-            is_new_topic = existing_count == 0
-            context["metadata"]["is_new_topic"] = is_new_topic
+#             is_new_topic = existing_count == 0
+#             context["metadata"]["is_new_topic"] = is_new_topic
         
-        return self.orchestrator.execute_with_process_strategy(context)
+#         return self.orchestrator.execute_with_process_strategy(context)
     
-    def process_batch_files(self, file_paths: List[str], topic_name: str, metadata: Optional[Dict[str, Any]] = None,
-                          llm_client=None, embedding_func=None) -> ToolResult:
-        """
-        Process multiple files using batch pipeline.
+#     def process_batch_files(self, file_paths: List[str], topic_name: str, metadata: Optional[Dict[str, Any]] = None,
+#                           llm_client=None, embedding_func=None) -> ToolResult:
+#         """
+#         Process multiple files using batch pipeline.
         
-        Args:
-            file_paths: List of file paths to process
-            topic_name: Topic name for grouping
-            metadata: Optional metadata for the files
-            llm_client: LLM client instance
-            embedding_func: Embedding function
+#         Args:
+#             file_paths: List of file paths to process
+#             topic_name: Topic name for grouping
+#             metadata: Optional metadata for the files
+#             llm_client: LLM client instance
+#             embedding_func: Embedding function
             
-        Returns:
-            ToolResult with processing results
-        """
-        files = [{"path": fp, "metadata": {}} for fp in file_paths]
+#         Returns:
+#             ToolResult with processing results
+#         """
+#         files = [{"path": fp, "metadata": {}} for fp in file_paths]
         
-        context = {
-            "files": files,
-            "topic_name": topic_name,
-            "metadata": metadata or {},
-            "llm_client": llm_client,
-            "embedding_func": embedding_func
-        }
+#         context = {
+#             "files": files,
+#             "topic_name": topic_name,
+#             "metadata": metadata or {},
+#             "llm_client": llm_client,
+#             "embedding_func": embedding_func
+#         }
         
-        return self.orchestrator.execute_with_process_strategy(context)
+#         return self.orchestrator.execute_with_process_strategy(context)
 
 
-# Example usage
-if __name__ == "__main__":
-    # Example of direct pipeline usage
-    integration = PipelineAPIIntegration()
+# # Example usage
+# if __name__ == "__main__":
+#     # Example of direct pipeline usage
+#     integration = PipelineAPIIntegration()
     
-    # Example 1: Explicit pipeline configuration
-    explicit_request = {
-        "target_type": "knowledge_graph",
-        "metadata": {"topic_name": "New Topic"},
-        "process_strategy": {
-            "pipeline": ["etl", "blueprint_gen", "graph_build"]
-        },
-        "file_path": "/path/to/document.pdf"
-    }
+#     # Example 1: Explicit pipeline configuration
+#     explicit_request = {
+#         "target_type": "knowledge_graph",
+#         "metadata": {"topic_name": "New Topic"},
+#         "process_strategy": {
+#             "pipeline": ["etl", "blueprint_gen", "graph_build"]
+#         },
+#         "file_path": "/path/to/document.pdf"
+#     }
     
-    # Example 2: Default pipeline selection
-    default_request = {
-        "target_type": "knowledge_graph",
-        "metadata": {"topic_name": "Existing Topic", "is_new_topic": False},
-        "file_path": "/path/to/document.pdf"
-    }
+#     # Example 2: Default pipeline selection
+#     default_request = {
+#         "target_type": "knowledge_graph",
+#         "metadata": {"topic_name": "Existing Topic", "is_new_topic": False},
+#         "file_path": "/path/to/document.pdf"
+#     }
