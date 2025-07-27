@@ -7,13 +7,18 @@ This module provides a REST API for the Narrative Knowledge system, enabling doc
 ### 1. Install Dependencies
 
 ```bash
-uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 2
+poetry install
 ```
 
 ### 2. Start the API Server
-
+#### You can start the API using either method:
+##### Method 1: Run the main module directly
 ```bash
 poetry run python -m api.main
+```
+##### Method 2: Use uvicorn (recommended for production)
+```bash
+poetry run uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 2
 ```
 
 The API will be available at `http://localhost:8000`

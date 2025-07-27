@@ -1,7 +1,7 @@
 from pathlib import Path
 import logging
 import hashlib
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from knowledge_graph.models import (
     SourceData,
@@ -50,7 +50,7 @@ class KnowledgeBuilder:
     """
 
     def __init__(
-        self, llm_client: LLMInterface = None, embedding_func=None, session_factory=None
+        self, llm_client: Optional[LLMInterface] = None, embedding_func=None, session_factory=None
     ):
         """
         Initialize the builder with a graph instance and specifications.
