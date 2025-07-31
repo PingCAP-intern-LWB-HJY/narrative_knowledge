@@ -53,10 +53,12 @@ def create_test_files(num_files: int = 1) -> List[Dict[str, Any]]:
         files.append({
             "path": temp_path,
             "filename": os.path.basename(temp_path),
+            "link": f"file_link {i+1}",     # suggested
             "metadata": {
                 "file_type": "text",
                 "size": os.path.getsize(temp_path),
-                "title": f"Test Document {i+1}"
+                "title": f"Test Document {i+1}",
+                # "link": f"file_meta_link {i+1}"
             }
         })
     return files
@@ -91,10 +93,11 @@ def test_scenario_1_single_document_existing_topic():
             "metadata": {
                 "topic_name": "existing_topic_python",
                 "is_new_topic": False,  # Existing topic
-                "database_uri": "sqlite:///test_knowledge_graph.db"
+                "database_uri": "sqlite:///test_knowledge_graph.db",
+                "link": f"request_meta_link"    # optional
             },
             "process_strategy": {
-                "pipeline": ["etl", "blueprint_gen", "graph_build"]
+                # "pipeline": ["etl", "blueprint_gen", "graph_build"]
             },
             "llm_client": MockLLMClient(),
             "embedding_func": MockEmbeddingFunc(),
@@ -154,7 +157,8 @@ def test_scenario_2_batch_documents_existing_topic():
             "metadata": {
                 "topic_name": "existing_topic_batch",
                 "is_new_topic": False,  # Existing topic
-                "database_uri": "sqlite:///test_knowledge_graph.db"
+                "database_uri": "sqlite:///test_knowledge_graph.db",
+                "link": f"request_meta_link"
             },
             "llm_client": MockLLMClient(),
             "embedding_func": MockEmbeddingFunc(),
@@ -219,6 +223,7 @@ def test_scenario_3_new_topic_batch_documents():
                 "topic_name": new_topic_name,
                 "is_new_topic": True,  # New topic
                 "database_uri": "sqlite:///test_knowledge_graph.db",
+                "link": f"request_meta_link",
                 "description": f"New topic created for testing with UUID: {new_topic_name}"
             },
             "llm_client": MockLLMClient(),

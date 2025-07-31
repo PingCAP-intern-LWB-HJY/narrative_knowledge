@@ -49,6 +49,37 @@ class PipelineAPIIntegration:
         # Execute pipeline based on process strategy
         return self.orchestrator.execute_with_process_strategy(context, execution_id)
     
+    def _determine_is_new_topic(self, metadata: Dict[str, Any], target_type: str) -> bool:
+        """
+        Determine if this is a new topic based on metadata and target type.
+        
+        Args:
+            metadata: Request metadata
+            target_type: Target type (knowledge_graph or personal_memory)
+            
+        Returns:
+            True if new topic, False if existing, or default for memory processing
+        """
+        # First check explicit metadata flag
+        explicit_is_new_topic = metadata.get("is_new_topic")
+        if explicit_is_new_topic is not None:
+            return bool(explicit_is_new_topic)
+        
+        # Determine from database if topic exists
+        from setting.db import SessionLocal
+        from knowledge_graph.models import SourceData
+        
+        topic_name = metadata.get("topic_name")
+        if topic_name:
+            with SessionLocal() as db:
+                existing_count = db.query(SourceData).filter(
+                    SourceData.topic_name == topic_name
+                ).count()
+                return existing_count == 0
+        else:
+            # No topic name provided, assume new topic for documents
+            return True
+
     def _prepare_context(self, request_data: Dict[str, Any], files: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Prepare context for pipeline execution from API request.
@@ -62,22 +93,7 @@ class PipelineAPIIntegration:
         """
         metadata = request_data.get("metadata", {})
         target_type = request_data.get("target_type", "knowledge_graph")
-        
-        # Base context for both target types
-        context = {
-            "target_type": target_type,
-            "process_strategy": request_data.get("process_strategy", {}),
-            "metadata": metadata,
-            "files": files,
-            "llm_client": request_data.get("llm_client"),
-            "embedding_func": request_data.get("embedding_func"),
-            "force_regenerate": request_data.get("force_regenerate", False),
-            "topic_name": metadata.get("topic_name"),
-            "link": metadata.get("link"),
-            "database_uri": metadata.get("database_uri"),
-            "is_new_topic": metadata.get("is_new_topic", False)
-        }
-        
+
         # Personal memory specific parameters
         if target_type == "personal_memory":
             # Extract user_id from metadata or request_data
@@ -98,11 +114,35 @@ class PipelineAPIIntegration:
                 if files and files[0].get("metadata"):
                     context["user_id"] = files[0]["metadata"].get("user_id")
         
-        # Handle file-specific parameters if files are provided
-        if files and len(files) == 1:
-            file_info = files[0]
-            context["file_path"] = file_info.get("path")
-            context["original_filename"] = file_info.get("filename")
+        else:
+            # Determine if this is a new topic or existing (only for knowledge_graph processing)
+            is_new_topic = self._determine_is_new_topic(metadata, target_type)
+            
+            # Base context for both target types
+            context = {
+                "target_type": target_type,
+                "process_strategy": request_data.get("process_strategy", {}),
+                "metadata": metadata,
+                "files": files,
+                "llm_client": request_data.get("llm_client"),
+                "embedding_func": request_data.get("embedding_func"),
+                "force_regenerate": request_data.get("force_regenerate", False),
+                "topic_name": metadata.get("topic_name"),
+                "link": metadata.get("link"),
+                "database_uri": metadata.get("database_uri"),
+                "is_new_topic": is_new_topic if target_type == "knowledge_graph" else None
+            }
+        
+            # Handle file-specific parameters if files are provided
+            if files and len(files) == 1:
+                file_info = files[0]
+                context["file_path"] = file_info.get("path")
+                context["original_filename"] = file_info.get("filename")
+                # Handle link from file metadata or request metadata
+                context["link"] = (
+                    file_info.get("link") or 
+                    metadata.get("link")
+                )
             
         return context
     

@@ -144,10 +144,29 @@ class BlueprintGenerationTool(BaseTool):
         }
 
     def validate_input(self, input_data: Dict[str, Any]) -> bool:
-        """Validate input parameters."""
+        """Validate input parameters with detailed error information."""
         topic_name = input_data.get("topic_name")
-        if not topic_name or not isinstance(topic_name, str):
+        if not topic_name:
+            self.logger.error("Validation error: Missing required parameter: 'topic_name'")
             return False
+        if not isinstance(topic_name, str):
+            self.logger.error(f"Validation error: 'topic_name' must be a string, got {type(topic_name).__name__}")
+            return False
+            
+        # Validate source_data_ids if provided
+        source_data_ids = input_data.get("source_data_ids")
+        if source_data_ids is not None:
+            if not isinstance(source_data_ids, list):
+                self.logger.error(f"Validation error: 'source_data_ids' must be a list, got {type(source_data_ids).__name__}")
+                return False
+            for i, source_id in enumerate(source_data_ids):
+                if not isinstance(source_id, str):
+                    self.logger.error(f"Validation error: source_data_ids[{i}] must be a string, got {type(source_id).__name__}")
+                    return False
+        
+        # Validate required LLM client
+            
+        # Validate embedding function
             
         return True
 

@@ -175,6 +175,26 @@ class GraphBuildTool(BaseTool):
             }
         }
 
+    def validate_input(self, input_data: Dict[str, Any]) -> bool:
+        """Validate input parameters."""
+        # Check for single document processing
+        if "source_data_id" in input_data and "blueprint_id" in input_data:
+            return True
+            
+        # Check for batch document processing  
+        if "source_data_ids" in input_data and "blueprint_id" in input_data:
+            return True
+            
+        # Check for topic-based processing
+        if "topic_name" in input_data:
+            return True
+        
+        self.logger.error("Validation error: Must contain either: Single document: source_data_id + blueprint_id \
+            or Batch documents: source_data_ids + blueprint_id \
+            or Batch topic: topic_name (+ optional source_data_ids)")
+            
+        return False
+
     def execute(self, input_data: Dict[str, Any]) -> ToolResult:
         """
         Build knowledge graph from documents using blueprint context.

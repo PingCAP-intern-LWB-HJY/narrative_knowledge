@@ -81,7 +81,7 @@ class DocumentETLTool(BaseTool):
                         },
                         "metadata": {
                             "type": "object",
-                            "description": "Custom metadata to attach to the document",
+                            "description": "Request-level metadata to attach to the document",
                             "default": {}
                         },
                         "force_regenerate": {
@@ -117,7 +117,7 @@ class DocumentETLTool(BaseTool):
                                     },
                                     "metadata": {
                                         "type": "object",
-                                        "description": "Custom metadata to attach to this document",
+                                        "description": "File-specific metadata to attach to this document",
                                         "default": {}
                                     },
                                     "link": {
@@ -136,6 +136,11 @@ class DocumentETLTool(BaseTool):
                         "topic_name": {
                             "type": "string",
                             "description": "Topic name for grouping documents"
+                        },
+                        "request_metadata": {
+                            "type": "object",
+                            "description": "Request-level metadata to apply to all documents",
+                            "default": {}
                         },
                         "force_regenerate": {
                             "type": "boolean",
@@ -215,28 +220,71 @@ class DocumentETLTool(BaseTool):
         }
     
     def validate_input(self, input_data: Dict[str, Any]) -> bool:
-        """Validate input parameters."""
+        """Validate input parameters with detailed error information."""
+        # Validate topic_name
         topic_name = input_data.get("topic_name")
-        if not topic_name or not isinstance(topic_name, str):
+        if not topic_name:
+            self.logger.error("Validation error: Missing required parameter: 'topic_name'")
+            return False
+        if not isinstance(topic_name, str):
+            self.logger.error(f"Validation error: 'topic_name' must be a string, got {type(topic_name).__name__}")
             return False
         
         # Single file validation
         if "file_path" in input_data:
             file_path = input_data.get("file_path")
-            if not file_path or not Path(file_path).exists():
+            if not file_path:
+                self.logger.error("Validation error: Missing required parameter: 'file_path'")
+                return False
+            if not isinstance(file_path, str):
+                self.logger.error(f"Validation error: 'file_path' must be a string, got {type(file_path).__name__}")
+                return False
+            if not Path(file_path).exists():
+                self.logger.error(f"Validation error: File not found: {file_path}")
+                return False
+            
+            # Validate metadata is dict for single file
+            metadata = input_data.get("metadata", {})
+            if not isinstance(metadata, dict):
+                self.logger.error(f"Validation error: 'metadata' must be a dict, got {type(metadata).__name__}")
                 return False
         
         # Batch file validation
         if "files" in input_data:
             files = input_data.get("files", [])
-            if not files or not isinstance(files, list):
+            if not files:
+                self.logger.error("Validation error: Missing or empty parameter: 'files'")
+                return False
+            if not isinstance(files, list):
+                self.logger.error(f"Validation error: 'files' must be a list, got {type(files).__name__}")
                 return False
             
-            for file_info in files:
+            # Validate request_metadata is dict for batch processing
+            request_metadata = input_data.get("request_metadata", {})
+            if not isinstance(request_metadata, dict):
+                self.logger.error(f"Validation error: 'request_metadata' must be a dict, got {type(request_metadata).__name__}")
+                return False
+            
+            for i, file_info in enumerate(files):
                 if not isinstance(file_info, dict):
+                    self.logger.error(f"Validation error: Files[{i}] must be a dict, got {type(file_info).__name__}")
                     return False
+                
                 file_path = file_info.get("path")
-                if not file_path or not Path(file_path).exists():
+                if not file_path:
+                    self.logger.error(f"Validation error: Missing required field 'path' in files[{i}]")
+                    return False
+                if not isinstance(file_path, str):
+                    self.logger.error(f"Validation error: Files[{i}]['path'] must be a string, got {type(file_path).__name__}")
+                    return False
+                if not Path(file_path).exists():
+                    self.logger.error(f"Validation error: File not found: {file_path} (in files[{i}])")
+                    return False
+                
+                # Validate file metadata is dict
+                file_metadata = file_info.get("metadata", {})
+                if not isinstance(file_metadata, dict):
+                    self.logger.error(f"Validation error: Files[{i}]['metadata'] must be a dict, got {type(file_metadata).__name__}")
                     return False
         
         return True
@@ -250,6 +298,7 @@ class DocumentETLTool(BaseTool):
                 - Single file: file_path + topic_name + optional metadata
                 - Batch files: files array + topic_name + optional metadata
                 - force_regenerate: Whether to force regeneration
+                - request_metadata: Global metadata from request (for batch processing)
                 
         Returns:
             ToolResult with batch processing results
@@ -262,17 +311,19 @@ class DocumentETLTool(BaseTool):
             if "files" in input_data:
                 # Batch processing
                 files = input_data["files"]
-                return self._process_batch_files(files, topic_name, force_regenerate)
+                request_metadata = input_data.get("request_metadata", {})
+                return self._process_batch_files(files, topic_name, force_regenerate, request_metadata)
             else:
                 # Single file processing (backward compatibility)
                 file_path = Path(input_data["file_path"])
-                metadata = input_data.get("metadata", {})
-                link = input_data.get("link", f"file://{file_path}")
+                request_metadata = input_data.get("metadata", {})
+                link = input_data.get("link")
                 original_filename = input_data.get("original_filename", file_path.name)
                 
                 file_info = {
                     "path": str(file_path),
-                    "metadata": metadata,
+                    "file_metadata": {},  # Empty for single file
+                    "metadata": request_metadata,  # For backward compatibility and RawDataSource
                     "link": link,
                     "filename": original_filename
                 }
@@ -305,10 +356,13 @@ class DocumentETLTool(BaseTool):
                 error_message=str(e)
             )
 
-    def _process_batch_files(self, files: List[Dict[str, Any]], topic_name: str, force_regenerate: bool = False) -> ToolResult:
+    def _process_batch_files(self, files: List[Dict[str, Any]], topic_name: str, force_regenerate: bool = False, request_metadata: Optional[Dict[str, Any]] = None) -> ToolResult:
         """Process multiple files in batch."""
         results = []
         source_data_ids = []
+        
+        # Use empty dict if no request metadata provided
+        request_metadata = request_metadata or {}
         
         total_files = len(files)
         processed_files = 0
@@ -319,7 +373,18 @@ class DocumentETLTool(BaseTool):
         
         for file_info in files:
             try:
-                file_result = self._process_single_file(file_info, topic_name, force_regenerate)
+                # Separate file metadata from request metadata
+                file_metadata = file_info.get("metadata", {})
+                
+                # Create updated file_info with both metadata types
+                updated_file_info = {
+                    **file_info,
+                    "request_metadata": request_metadata,
+                    "file_metadata": file_metadata,
+                    "metadata": request_metadata  # For backward compatibility and RawDataSource
+                }
+                
+                file_result = self._process_single_file(updated_file_info, topic_name, force_regenerate)
                 
                 if file_result.success:
                     source_data_id = file_result.data.get("source_data_id")
@@ -379,8 +444,42 @@ class DocumentETLTool(BaseTool):
         """Process a single file."""
         try:
             file_path = Path(file_info["path"])
-            metadata = file_info.get("metadata", {})
-            link = file_info.get("link", f"file://{file_path}")
+            
+            # Handle separated metadata
+            request_metadata = file_info.get("request_metadata", {})
+            file_metadata = file_info.get("file_metadata", {})
+            
+            # For single file processing, use request_metadata as primary
+            if "request_metadata" in file_info:
+                metadata = request_metadata
+            else:
+                # Backward compatibility for single file processing
+                metadata = file_info.get("metadata", {})
+                
+            # Handle link with proper source prioritization
+            def _get_valid_link(sources):
+                """Get first valid link from list of sources"""
+                for source in sources:
+                    link = source.get("link") if isinstance(source, dict) else source
+                    if link and link not in [None, "", {}]:
+                        return link
+                return None
+            
+            # Determine link based on processing mode
+            if "request_metadata" in file_info:
+                # Batch processing: file_info -> file_metadata -> request_metadata -> fallback
+                link = _get_valid_link([
+                    file_info,
+                    file_info.get("file_metadata", {}),
+                    file_info.get("request_metadata", {})
+                ]) or f"file://{file_path}"
+            else:
+                # Single file processing: file_info -> metadata -> fallback
+                link = _get_valid_link([
+                    file_info,
+                    file_info.get("metadata", {})
+                ]) or f"file://{file_path}"
+            
             original_filename = file_info.get("filename", file_path.name)
             
             self.logger.info(f"Starting ETL processing for file: {file_path}")
@@ -410,11 +509,13 @@ class DocumentETLTool(BaseTool):
                 ).first()
                 
                 if not raw_data_source:
+                    # Store request metadata in RawDataSource (for upload metadata)
+                    # File metadata is kept separate in SourceData.attributes
                     raw_data_source = RawDataSource(
                         file_path=str(file_path),
                         topic_name=topic_name,
                         original_filename=original_filename,
-                        metadata=metadata,
+                        metadata=metadata,  # Use request metadata
                         status="pending"
                     )
                     db.add(raw_data_source)
@@ -493,7 +594,7 @@ class DocumentETLTool(BaseTool):
                     db.add(content_store)
                     db.flush()
                 
-                # Create SourceData record
+                # Create SourceData record with separated metadata
                 source_data = SourceData(
                     name=original_filename,
                     topic_name=topic_name,
@@ -502,7 +603,8 @@ class DocumentETLTool(BaseTool):
                     link=link,
                     source_type=source_type,
                     attributes={
-                        **metadata,
+                        "request_metadata": request_metadata,
+                        "file_metadata": file_metadata,
                         "file_path": str(file_path),
                         "original_filename": original_filename,
                         "file_size": len(file_content),

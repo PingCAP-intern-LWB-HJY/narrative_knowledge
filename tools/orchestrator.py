@@ -246,19 +246,21 @@ class PipelineOrchestrator:
         
         if tool_key == "etl":
             files = context.get("files", [])
+            request_metadata = context.get("metadata", {})
             if files:
-                # Batch processing with files array
+                # Batch processing with files array - preserve request metadata
                 return {
                     "files": files,
                     "topic_name": context.get("topic_name"),
+                    "request_metadata": request_metadata,
                     "force_regenerate": context.get("force_regenerate", False)
                 }
             else:
-                # Single file processing (backward compatibility)
+                # Single file processing
                 return {
                     "file_path": context.get("file_path"),
                     "topic_name": context.get("topic_name"),
-                    "metadata": context.get("metadata", {}),
+                    "metadata": request_metadata,
                     "force_regenerate": context.get("force_regenerate", False),
                     "link": context.get("link"),
                     "original_filename": context.get("original_filename")

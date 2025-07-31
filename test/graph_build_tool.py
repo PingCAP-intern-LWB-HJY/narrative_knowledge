@@ -184,6 +184,10 @@ class GraphBuildTool(BaseTool):
         # Check for topic-based processing
         if "topic_name" in input_data:
             return True
+        
+        self.logger.error("Validation error: Must contain either: Single document: source_data_id + blueprint_id \
+            or Batch documents: source_data_ids + blueprint_id \
+            or Batch topic: topic_name (+ optional source_data_ids)")
             
         return False
 
