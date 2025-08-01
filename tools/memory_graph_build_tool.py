@@ -12,6 +12,7 @@ from tools.base import ToolResult
 from tools.graph_build_tool import GraphBuildTool
 from memory_system import PersonalMemorySystem, generate_topic_name_for_personal_memory
 from knowledge_graph.models import SourceData, AnalysisBlueprint
+from llm.factory import LLMInterface
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +53,13 @@ class MemoryGraphBuildTool(GraphBuildTool):
                     "items": {
                         "type": "object",
                         "properties": {
-                            "message_content": {"type": "string", "description": "The message content"},
+                            "content": {"type": "string", "description": "The message content"},
                             "session_id": {"type": "string", "description": "Conversation session ID"},
                             "conversation_title": {"type": "string", "description": "Title of the conversation"},
                             "date": {"type": "string", "description": "ISO format timestamp"},
                             "role": {"type": "string", "enum": ["user", "assistant"], "description": "Message role"}
                         },
-                        "required": ["message_content", "role"]
+                        "required": ["content", "role"]
                     },
                     "description": "List of chat messages to process"
                 },
@@ -126,7 +127,7 @@ class MemoryGraphBuildTool(GraphBuildTool):
                 if not isinstance(msg, dict):
                     print("Each chat message must be a dict")
                     return False
-                if "message_content" not in msg or "role" not in msg:
+                if "content" not in msg or "role" not in msg:
                     print("Each message must have message_content and role")
                     return False
                 if msg.get("role") not in ["user", "assistant"]:
@@ -170,18 +171,18 @@ class MemoryGraphBuildTool(GraphBuildTool):
                     error_message="user_id is required"
                 )
             
-            # Initialize memory system with provided clients
-            llm_client = input_data.get("llm_client", self.llm_client)
-            embedding_func = input_data.get("embedding_func", self.embedding_func)
-            
+            # Get LLM client from input or use provided one
+            llm_client = input_data.get("llm_client", LLMInterface("openai", model="gpt-4o"))
             if not llm_client:
                 return ToolResult(
                     success=False,
-                    error_message="LLM client is required for memory processing"
+                    error_message="LLM client is required for graph building"
                 )
+            embedding_func = input_data.get("embedding_func", self.embedding_func)
             
-            # Initialize components
+            # Initialize components with provided clients
             self.llm_client = llm_client
+            self.logger.info("successfully initialized LLM client")
             self.embedding_func = embedding_func
             self._initialize_components()
             

@@ -229,7 +229,7 @@ The API uses standardized error responses for all endpoints:
 }
 ```
 
-### Enhanced Data Processing Pipeline
+## Enhanced Data Processing Pipeline
 
 **POST** `/api/v1/save_pipeline`
 
@@ -322,6 +322,7 @@ curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
 - `process_strategy`: JSON object with processing pipeline configuration (optional)
   - `pipeline`: Array of tool names to execute
   - For JSON input, use `["blueprint_gen", "graph_build"]` (ETL not needed)
+  - For memory processing, now use default pipeline (MemoryGraphBuild), regardless of `process_strategy`
 
 **Example using curl (chat history):**
 ```bash
@@ -373,6 +374,41 @@ curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
     }
   }'
 ```
+**Response (For memory processing):**
+```json
+{
+  "success": true,
+  "message": "Processing completed successfully",
+  "data": {
+    "results": {
+      "MemoryGraphBuildTool": { 
+        "success": true,
+        "data": {
+          "user_id": "user123",
+          "topic_name": "The personal information of user123",
+          "source_data_id": "6f719586-a5d5-4fa3-9747-32af7ebc48b6",
+          "knowledge_block_id": "5245b45e-5784-4f97-9761-8d55d91521b7",
+          "entities_created": 0,
+          "relationships_created": 1,
+          "triplets_extracted": 1,
+          "status": "completed"
+        },
+        "error_message": null,
+        "metadata": {
+          "user_id": "user123",
+          "message_count": 2,
+          "topic_name": "The personal information of user123"
+        },
+        "execution_id": "dea4dcb1-9325-492e-8dec-d9afd9a0046d_MemoryGraphBuildTool",
+        "duration_seconds": 32.593251,
+        "timestamp": "2025-08-01T22:55:24.658312+00:00"
+      }
+    },
+    "pipeline": ["MemoryGraphBuildTool"],
+    "duration_seconds": 32.593757
+  },
+  "execution_id": "dea4dcb1-9325-492e-8dec-d9afd9a0046d"}%  
+```
 
 **Response:**
 ```json
@@ -411,10 +447,17 @@ curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
 }
 ```
 
+### Relavant Settings for testing
+- **LLM Client**: Currently use default `llm_client` as `openai` with model `gpt-4o`
+- **Embedding Function**: Currently use default `embedding_model` as `text-embedding-3-small` with base_url `https://api.openai.com/v1`
+- Export environment variables `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`, `EMBEDDING_MODEL_API_KEY` and `OPENAI_API_KEY` before testing. Both keys use `OPENAI_API_KEY` currently.
+
+
 ### Available Pipeline Tools
 - **DocumentETLTool**: Extract and transform document content (for file uploads only)
 - **BlueprintGenerationTool**: Generate processing blueprints from content
 - **GraphBuildTool**: Build knowledge graph from blueprints and extract relationships
+- **MemoryGraphBuildTool**: Inherited from GraphBuildTool, process chat messages and generate personal blueprint; then build knowledge graph from blueprints and extract relationships
 
 ### Processing Pipeline Configuration
 The `process_strategy` parameter allows you to customize the processing pipeline:

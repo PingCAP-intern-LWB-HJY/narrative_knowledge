@@ -101,6 +101,8 @@ class PipelineOrchestrator:
         
         tool_keys = self.standard_pipelines[pipeline_name]
         tools = [self.tool_key_mapping[key] for key in tool_keys]
+
+        self.logger.info(f"Execute pipeline with tools: {tools}")
         
         return self.execute_custom_pipeline(tools, context, execution_id)
     
@@ -213,7 +215,8 @@ class PipelineOrchestrator:
         Returns:
             Name of the default pipeline to use
         """
-        
+        self.logger.info(f"Process strategy not provided. Selecting appropriate default pipeline.")
+
         # Memory pipeline for dialogue history/chat
         if target_type == "personal_memory" or input_type == "dialogue":
             if input_type == "dialogue":
@@ -401,6 +404,7 @@ class PipelineOrchestrator:
         """
         from knowledge_graph.models import AnalysisBlueprint
         
+        self.logger.info(f"Looking up for the latest ready blueprint for topic: {topic_name}")
         with self.session_factory() as db:
             blueprint = db.query(AnalysisBlueprint).filter(
                 AnalysisBlueprint.topic_name == topic_name,
@@ -430,6 +434,7 @@ class PipelineOrchestrator:
         # Explicit pipeline execution
         if "pipeline" in process_strategy and "knowledge_graph" in target_type:
             pipeline = process_strategy["pipeline"]
+            self.logger.info(f"We have process_strategy, with specific pipelines: {pipeline}")
             try:
                 tools = [self.tool_key_mapping[key] for key in pipeline]
             except KeyError as e:
@@ -442,15 +447,19 @@ class PipelineOrchestrator:
         # Default pipeline selection
         topic_name = metadata.get("topic_name")
         file_count = len(request_data.get("files", []))
-        is_new_topic = metadata.get("is_new_topic", False)
+        is_new_topic = request_data.get("is_new_topic", False)
         
         # Determine input type and context
         input_type = "dialogue" if target_type == "personal_memory" else "document"
         if isinstance(request_data.get("input"), str) and not request_data.get("files"):
             input_type = "text"
         
+        self.logger.info(f"Input type is: {input_type}")
         pipeline_name = self.select_default_pipeline(
             target_type, topic_name, file_count, is_new_topic, 
             input_type=input_type
         )
+
+        self.logger.info(f"Using pipeline name: {pipeline_name}")
+        
         return self.execute_pipeline(pipeline_name, request_data, execution_id)

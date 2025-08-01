@@ -12,7 +12,7 @@ from llm.embedding import get_text_embedding
 
 class ToolsRouteWrapper:
     """
-    路由包装器，将 FastAPI 的 UploadFile 转换为 tools 系统可处理的格式
+    Route wrapper that converts FastAPI's UploadFile to a format processable by the tools system
     """
     
     def __init__(self, session_factory=None):
@@ -29,18 +29,18 @@ class ToolsRouteWrapper:
         embedding_func=None
     ) -> ToolResult:
         """
-        路由包装函数：处理文件上传请求
+        Route wrapper function: Process file upload requests
         
         Args:
-            files: FastAPI UploadFile 对象或列表
-            metadata: 元数据（可以是JSON字符串或字典）
-            process_strategy: 处理策略（可以是JSON字符串或字典）
-            target_type: 目标类型
-            llm_client: LLM客户端（可选，会自动创建）
-            embedding_func: 嵌入函数（可选，会自动创建）
+            files: FastAPI UploadFile object or list
+            metadata: Metadata (can be JSON string or dict)
+            process_strategy: Processing strategy (can be JSON string or dict)
+            target_type: Target type
+            llm_client: LLM client (optional, will auto-create)
+            embedding_func: Embedding function (optional, will auto-create)
             
         Returns:
-            ToolResult: 处理结果
+            ToolResult: Processing result
         """
         prepared_files = []
         try:
@@ -93,18 +93,18 @@ class ToolsRouteWrapper:
         embedding_func=None
     ) -> ToolResult:
         """
-        路由包装函数：处理JSON数据请求（如聊天记录）
+        Route wrapper function: Process JSON data requests (e.g., chat logs)
         
         Args:
-            input_data: 输入数据（聊天记录、文本等）
-            metadata: 元数据
-            process_strategy: 处理策略
-            target_type: 目标类型
-            llm_client: LLM客户端
-            embedding_func: 嵌入函数
+            input_data: Input data (chat logs, text, etc.)
+            metadata: Metadata
+            process_strategy: Processing strategy
+            target_type: Target type
+            llm_client: LLM client
+            embedding_func: Embedding function
             
         Returns:
-            ToolResult: 处理结果
+            ToolResult: Processing result
         """
         try:
             # 1. 解析参数
@@ -146,7 +146,7 @@ class ToolsRouteWrapper:
             )
 
     def _parse_metadata(self, metadata: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
-        """解析元数据"""
+        """Parse metadata"""
         if isinstance(metadata, str):
             try:
                 return json.loads(metadata)
@@ -155,7 +155,7 @@ class ToolsRouteWrapper:
         return metadata or {}
 
     def _parse_process_strategy(self, process_strategy: Optional[Union[str, Dict[str, Any]]]) -> Dict[str, Any]:
-        """解析处理策略"""
+        """Parse processing strategy"""
         if process_strategy is None:
             return {}
         if isinstance(process_strategy, str):
@@ -166,7 +166,7 @@ class ToolsRouteWrapper:
         return process_strategy
 
     def _prepare_files(self, files: List[UploadFile], metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """准备文件信息"""
+        """Prepare file information"""
         prepared_files = []
         
         for i, file in enumerate(files):
@@ -203,7 +203,7 @@ class ToolsRouteWrapper:
         llm_client, 
         embedding_func
     ) -> Dict[str, Any]:
-        """构建请求数据"""
+        """Build request data"""
         return {
             "target_type": target_type,
             "metadata": metadata,
@@ -214,7 +214,7 @@ class ToolsRouteWrapper:
         }
 
     def _cleanup_temp_files(self, prepared_files: List[Dict[str, Any]]):
-        """清理临时文件"""
+        """Cleanup temporary files"""
         for file_info in prepared_files:
             try:
                 temp_path = Path(file_info["path"])
@@ -225,7 +225,7 @@ class ToolsRouteWrapper:
                 print(f"Warning: Failed to cleanup temp file {file_info['path']}: {e}")
 
     def __del__(self):
-        """清理临时目录"""
+        """Cleanup temporary directory"""
         try:
             if hasattr(self, 'temp_dir') and self.temp_dir.exists():
                 import shutil

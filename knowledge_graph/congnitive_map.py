@@ -30,7 +30,7 @@ class DocumentCognitiveMapGenerator:
             llm_client: LLM interface for generating cognitive maps
             session_factory: Database session factory. If None, uses default SessionLocal.
         """
-        self.llm_client = LLMInterface("opai", model="gpt-4o") if llm_client is None else llm_client
+        self.llm_client = LLMInterface("openai", model="gpt-4o") if llm_client is None else llm_client
         self.SessionLocal = session_factory or SessionLocal
         self.worker_count = worker_count
 

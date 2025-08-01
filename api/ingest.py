@@ -315,15 +315,17 @@ async def save_data_pipeline(
             target_type=body.get("target_type", "personal_memory")
         )
         
-        # 类似的响应处理...
+        # Convert ToolResult to dict for JSON serialization
+        result_dict = result.to_dict()
+        
         if result.success:
             return JSONResponse(
                 status_code=200,
                 content={
                     "success": True,
                     "message": "Processing completed successfully", 
-                    "data": result.data,
-                    "execution_id": result.execution_id
+                    "data": result_dict["data"],
+                    "execution_id": result_dict["execution_id"]
                 }
             )
         else:
@@ -331,8 +333,8 @@ async def save_data_pipeline(
                 status_code=500,
                 content={
                     "success": False,
-                    "message": result.error_message,
-                    "execution_id": result.execution_id
+                    "message": result_dict["error_message"],
+                    "execution_id": result_dict["execution_id"]
                 }
             )
     else:

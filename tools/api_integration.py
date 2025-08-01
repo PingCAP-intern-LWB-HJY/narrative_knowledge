@@ -117,6 +117,7 @@ class PipelineAPIIntegration:
         else:
             # Determine if this is a new topic or existing (only for knowledge_graph processing)
             is_new_topic = self._determine_is_new_topic(metadata, target_type)
+            self.logger.info(f"Using new topic? (True/False): {is_new_topic}")
             
             # Base context for both target types
             context = {
@@ -211,24 +212,3 @@ class PipelineAPIIntegration:
         return self.orchestrator.execute_with_process_strategy(context)
 
 
-# Example usage
-if __name__ == "__main__":
-    # Example of direct pipeline usage
-    integration = PipelineAPIIntegration()
-    
-    # Example 1: Explicit pipeline configuration
-    explicit_request = {
-        "target_type": "knowledge_graph",
-        "metadata": {"topic_name": "New Topic"},
-        "process_strategy": {
-            "pipeline": ["etl", "blueprint_gen", "graph_build"]
-        },
-        "file_path": "/path/to/document.pdf"
-    }
-    
-    # Example 2: Default pipeline selection
-    default_request = {
-        "target_type": "knowledge_graph",
-        "metadata": {"topic_name": "Existing Topic", "is_new_topic": False},
-        "file_path": "/path/to/document.pdf"
-    }

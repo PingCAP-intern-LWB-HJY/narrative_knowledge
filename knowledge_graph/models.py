@@ -246,8 +246,8 @@ class KnowledgeBlock(Base):
     )
     content = Column(LONGTEXT, nullable=True)
     context = Column(Text, nullable=True)
-    # fixed 4096 dimension embedding for knowledge graph, fix it later
-    content_vec = Column(VectorType(4096), nullable=True)
+    # fixed 1536 dimension embedding for knowledge graph, fix it later; dimension setting related to different embedding models
+    content_vec = Column(VectorType(1536), nullable=True)
     hash = Column(
         String(64),
         nullable=False,

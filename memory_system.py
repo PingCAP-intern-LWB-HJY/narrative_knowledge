@@ -152,8 +152,8 @@ class PersonalMemorySystem:
             embedding_func: Function to generate embeddings
             session_factory: Database session factory
         """
-        self.llm_client = llm_client
-        self.embedding_func = embedding_func or get_text_embedding
+        self.llm_client = LLMInterface("openai", model="gpt-4o") if llm_client is None else llm_client
+        self.embedding_func = get_text_embedding
         self.SessionLocal = session_factory or db_manager.get_session_factory()
         self.knowledge_builder = KnowledgeBuilder(
             llm_client, embedding_func, session_factory
@@ -185,8 +185,9 @@ class PersonalMemorySystem:
             Dict with processing results
         """
         topic_name = generate_topic_name_for_personal_memory(user_id)
+
         logger.info(
-            f"Processing chat batch for user {user_id}: {len(chat_messages)} messages"
+            f"Processing chat batch for user '{user_id}' with topic name: '{topic_name}'; {len(chat_messages)} messages"
         )
 
         # Step 1: Store as SourceData
@@ -305,6 +306,7 @@ class PersonalMemorySystem:
             source_data = SourceData(
                 name=f"chat_batch_{user_id}_{batch_timestamp}",
                 link=chat_link,
+                topic_name=topic_name,
                 source_type="application/json",
                 content_hash=content_store.content_hash,
                 attributes=attributes,
@@ -486,6 +488,8 @@ Generate a concise narrative summary that captures the essence of this conversat
             blueprint = AnalysisBlueprint(
                 topic_name=topic_name,
                 processing_instructions=PersonalBlueprint_processing_instructions,
+                status="ready",
+                contributing_source_data_ids=f"source_data_ids for user '{user_id}' with topic '{topic_name}'"
             )
             db.add(blueprint)
             db.commit()
