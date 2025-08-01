@@ -257,3 +257,86 @@ async def save_data(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="Unsupported content type. Use application/json or multipart/form-data.",
         )
+
+from tools.route_wrapper import ToolsRouteWrapper
+
+# 在模块级别创建包装器实例
+tools_wrapper = ToolsRouteWrapper()
+
+@router.post("/save_pipeline", response_model=APIResponse, status_code=status.HTTP_200_OK)
+async def save_data_pipeline(
+    request: Request,
+    file: Optional[UploadFile] = Form(None),
+    metadata: Optional[str] = Form(None),
+    target_type: Optional[str] = Form(None),
+    process_strategy: Optional[str] = Form(None),
+) -> JSONResponse:
+    """
+    Enhanced save endpoint using tools pipeline system.
+    """
+    content_type = request.headers.get("content-type", "")
+
+    if "multipart/form-data" in content_type:
+        # 文件上传处理
+        if not file or not metadata or not target_type:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="For multipart/form-data, 'file', 'metadata', and 'target_type' are required.",
+            )
+        
+        # 使用 tools 包装器处理
+        result = tools_wrapper.process_upload_request(
+            files=file,
+            metadata=metadata,
+            process_strategy=process_strategy,
+            target_type=target_type
+        )
+        logger.info(f"Processed upload request: {result.to_dict()}")
+        # 转换为 API 响应格式
+        if result.success:
+            return JSONResponse(
+                status_code=200,
+                content=result.to_dict()
+            )
+        else:
+            return JSONResponse(
+                status_code=500,
+                content=result.to_dict()
+            )
+
+    elif "application/json" in content_type:
+        # JSON 数据处理
+        body = await request.json()
+        
+        result = tools_wrapper.process_json_request(
+            input_data=body.get("input"),
+            metadata=body.get("metadata", {}),
+            process_strategy=body.get("process_strategy"),
+            target_type=body.get("target_type", "personal_memory")
+        )
+        
+        # 类似的响应处理...
+        if result.success:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "success": True,
+                    "message": "Processing completed successfully", 
+                    "data": result.data,
+                    "execution_id": result.execution_id
+                }
+            )
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "message": result.error_message,
+                    "execution_id": result.execution_id
+                }
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Unsupported content type. Use application/json or multipart/form-data.",
+        )

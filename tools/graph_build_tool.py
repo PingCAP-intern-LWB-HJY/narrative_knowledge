@@ -14,7 +14,7 @@ from knowledge_graph.models import SourceData, AnalysisBlueprint
 from knowledge_graph.graph import NarrativeKnowledgeGraphBuilder
 from knowledge_graph.congnitive_map import DocumentCognitiveMapGenerator
 from setting.db import SessionLocal
-
+from llm.factory import LLMInterface
 
 class GraphBuildTool(BaseTool):
     """
@@ -45,6 +45,8 @@ class GraphBuildTool(BaseTool):
         self.llm_client = llm_client
         self.embedding_func = embedding_func
         self.worker_count = worker_count
+        self.graph_builder = None
+        self.cm_generator = None
         
     def _initialize_components(self):
         """Initialize graph builder and cognitive map generator."""
@@ -212,10 +214,16 @@ class GraphBuildTool(BaseTool):
             ToolResult with graph building results
         """
         try:
+            self.logger.info("Starting GraphBuildTool execute")
             force_regenerate = input_data.get("force_regenerate", False)
             
             # Get LLM client from input or use provided one
-            llm_client = input_data.get("llm_client", self.llm_client)
+            llm_client = input_data.get("llm_client", LLMInterface("openai", model="gpt-4o"))
+            if not llm_client:
+                return ToolResult(
+                    success=False,
+                    error_message="LLM client is required for graph building"
+                )
             embedding_func = input_data.get("embedding_func", self.embedding_func)
             
             if not llm_client:
@@ -226,12 +234,14 @@ class GraphBuildTool(BaseTool):
             
             # Initialize components with provided clients
             self.llm_client = llm_client
+            self.logger.info("successfully initialized LLM client")
             self.embedding_func = embedding_func
             self._initialize_components()
             
             # Determine processing mode
             if "blueprint_id" in input_data and "source_data_id" in input_data:
                 # Single document processing
+                self.logger.info("Processing single document")
                 return self._process_single_document(
                     input_data["blueprint_id"], 
                     input_data["source_data_id"], 
@@ -239,6 +249,7 @@ class GraphBuildTool(BaseTool):
                 )
             elif "blueprint_id" in input_data and "source_data_ids" in input_data:
                 # Batch document processing with specific IDs
+                self.logger.info(f"Processing batch with blueprint: {input_data['blueprint_id']}")
                 return self._process_batch_with_blueprint(
                     input_data["blueprint_id"],
                     input_data["source_data_ids"],
@@ -246,6 +257,7 @@ class GraphBuildTool(BaseTool):
                 )
             elif "topic_name" in input_data:
                 # Batch topic processing
+                self.logger.info(f"Processing topic batch: {input_data['topic_name']}")
                 return self._process_topic_batch(
                     input_data["topic_name"],
                     input_data.get("source_data_ids"),
@@ -329,11 +341,14 @@ class GraphBuildTool(BaseTool):
                 
                 # Update status to processing
                 source_data.status = "graph_processing"
+                
+                result = self._process_document_with_blueprint(source_data, blueprint)
+                
                 db.commit()
             
             try:
                 # Process the document
-                result = self._process_document_with_blueprint(source_data, blueprint)
+                
                 
                 if result.success:
                     # Update status to completed
@@ -518,10 +533,10 @@ class GraphBuildTool(BaseTool):
                 )
                 
                 if source_data_ids:
+                    self.logger.info(f"Filtering source data by provided IDs: {source_data_ids}")
                     query = query.filter(SourceData.id.in_(source_data_ids))
                 
                 source_data_list = query.all()
-                
                 if not source_data_list:
                     return ToolResult(
                         success=False,
@@ -653,7 +668,7 @@ class GraphBuildTool(BaseTool):
                 blueprint,
                 document_cognitive_map
             )
-            
+            self.logger.info(f"Successfully extracted {len(triplets)} triplets by function: extract_triplets_from_document")
             if not triplets:
                 self.logger.warning(f"No triplets extracted from document: {source_data.id}")
                 return ToolResult(

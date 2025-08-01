@@ -501,26 +501,27 @@ class DocumentETLTool(BaseTool):
                 content_store = db.query(ContentStore).filter_by(
                     content_hash=file_hash
                 ).first()
-                
+                self.logger.info(f"ContentStore lookup for {file_path}: {content_store}")
                 # Create or get RawDataSource record
                 raw_data_source = db.query(RawDataSource).filter_by(
                     file_path=str(file_path),
                     topic_name=topic_name
                 ).first()
-                
+                self.logger.info(f"RawDataSource lookup for {file_path}: {raw_data_source}")
                 if not raw_data_source:
                     # Store request metadata in RawDataSource (for upload metadata)
                     # File metadata is kept separate in SourceData.attributes
                     raw_data_source = RawDataSource(
                         file_path=str(file_path),
                         topic_name=topic_name,
+                        file_hash=file_hash,
                         original_filename=original_filename,
-                        metadata=metadata,  # Use request metadata
-                        status="pending"
+                        raw_data_source_metadata=metadata,  # Use request metadata
+                        status="etl_pending"
                     )
                     db.add(raw_data_source)
                     db.flush()
-                
+                self.logger.info(f"RawDataSource created/updated for {file_path}: {raw_data_source.id}")
                 # Check if already processed and not forcing reprocess
                 if not force_regenerate:
                     existing_source_data = db.query(SourceData).filter(
@@ -580,7 +581,7 @@ class DocumentETLTool(BaseTool):
                         success=False,
                         error_message=f"Content extraction failed: {str(e)}"
                     )
-                
+                self.logger.info(f"Extracted content from {file_path}, size: {len(content)} bytes")
                 # Create or update ContentStore
                 if not content_store:
                     content_store = ContentStore(
@@ -593,7 +594,7 @@ class DocumentETLTool(BaseTool):
                     )
                     db.add(content_store)
                     db.flush()
-                
+                self.logger.info(f"ContentStore created/updated for {file_path}: {content_store.content_hash}")   
                 # Create SourceData record with separated metadata
                 source_data = SourceData(
                     name=original_filename,
@@ -615,6 +616,8 @@ class DocumentETLTool(BaseTool):
                 
                 # Update RawDataSource status
                 raw_data_source.status = "etl_completed"  # type: ignore
+                
+                self.logger.info(f"Creating SourceData for file: {file_path}")
                 
                 db.add(source_data)
                 db.commit()

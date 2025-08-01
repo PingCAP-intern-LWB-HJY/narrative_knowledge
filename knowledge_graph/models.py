@@ -53,9 +53,9 @@ class RawDataSource(Base):
     file_path = Column(String(512), nullable=False)
     original_filename = Column(String(255), nullable=False)
     topic_name = Column(String(255), nullable=False)  # Key attribute for grouping
-    file_size = Column(BigInteger, nullable=False)
+    file_size = Column(BigInteger)
     file_hash = Column(String(64), nullable=False)  # SHA-256 hash of file content
-    metadata = Column(JSON, nullable=True)  # Custom metadata from upload
+    raw_data_source_metadata = Column(JSON, nullable=True)  # Custom metadata from upload
     
     # Status tracking for ETL processing
     status = Column(

@@ -215,7 +215,9 @@ class BlueprintGenerationTool(BaseTool):
                     query = query.filter(SourceData.id.in_(source_data_ids))
                 
                 source_data_list = query.order_by(SourceData.created_at).all()
-                
+
+                self.logger.info(f"Retrieved source_data_list: {source_data_list}")
+
                 if not source_data_list:
                     return ToolResult(
                         success=False,
@@ -223,9 +225,11 @@ class BlueprintGenerationTool(BaseTool):
                     )
                 
                 # Calculate version hash from all source data versions
-                version_input = "|".join(sorted([sd.content_version for sd in source_data_list]))
+                version_input = "|".join(sorted([sd.content_hash for sd in source_data_list]))
                 version_hash = hashlib.sha256(version_input.encode("utf-8")).hexdigest()
-                
+
+                self.logger.info(f"Calculated version hash for source_data_list: {version_hash}")
+
                 # Check if blueprint is up-to-date (unless forcing regeneration)
                 if not force_regenerate:
                     existing_blueprint = db.query(AnalysisBlueprint).filter(
@@ -268,13 +272,14 @@ class BlueprintGenerationTool(BaseTool):
                     blueprint.status = "generating"
                     blueprint.error_message = None
                 
-                db.commit()
                 blueprint_id = blueprint.id
-            
-            try:
+                
                 # Convert source data to document format
                 documents = self._convert_source_data_to_documents(source_data_list)
-                
+
+                self.logger.info(f"successfully converted {len(documents)} source data records to documents for cognitive map generation")
+                db.commit()  # Commit to ensure blueprint is created
+            try:
                 # Ensure components are properly initialized
                 if not self.cm_generator or not self.graph_builder:
                     raise ValueError("Required components not initialized")
@@ -293,6 +298,8 @@ class BlueprintGenerationTool(BaseTool):
                 blueprint_result = self.graph_builder.generate_analysis_blueprint(
                     topic_name, cognitive_maps, force_regenerate=True
                 )
+                self.logger.info(f"Generated blueprint result: {blueprint_result}")
+                
                 
                 # Update blueprint with results
                 with self.session_factory() as db:
@@ -304,7 +311,7 @@ class BlueprintGenerationTool(BaseTool):
                     blueprint.processing_items = blueprint_result.processing_items
                     blueprint.processing_instructions = blueprint_result.processing_instructions
                     blueprint.source_data_version_hash = version_hash
-                    blueprint.contributing_source_data_ids = [sd.id for sd in source_data_list]
+                    blueprint.contributing_source_data_ids = [doc["source_id"] for doc in documents]
                     blueprint.error_message = None
                     
                     db.commit()

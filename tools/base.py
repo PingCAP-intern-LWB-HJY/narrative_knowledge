@@ -48,9 +48,19 @@ class ToolResult:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
+        def convert(obj):
+            if isinstance(obj, ToolResult):
+                return obj.to_dict()
+            elif isinstance(obj, dict):
+                return {k: convert(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert(i) for i in obj]
+            else:
+                return obj
+
         return {
             "success": self.success,
-            "data": self.data,
+            "data": convert(self.data),
             "error_message": self.error_message,
             "metadata": self.metadata,
             "execution_id": self.execution_id,

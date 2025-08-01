@@ -10,6 +10,10 @@ import uuid
 from tools.base import ToolResult
 from tools.base import TOOL_REGISTRY
 from setting.db import SessionLocal
+from llm.factory import LLMInterface
+
+# gloabl LLM client for default usage
+llm_client = LLMInterface("openai", model="gpt-4o")
 
 
 class PipelineOrchestrator:
@@ -54,20 +58,20 @@ class PipelineOrchestrator:
         """Auto-register all available tools."""
         try:
             # Import tools with absolute paths
-            from document_etl_tool import DocumentETLTool
-            from blueprint_generation_tool import BlueprintGenerationTool
-            from graph_build_tool import GraphBuildTool
-            from memory_graph_build_tool import MemoryGraphBuildTool
+            from .document_etl_tool import DocumentETLTool
+            from .blueprint_generation_tool import BlueprintGenerationTool
+            from .graph_build_tool import GraphBuildTool
+            from .memory_graph_build_tool import MemoryGraphBuildTool
             # Register tools if not already registered
             if not TOOL_REGISTRY.get_tool("DocumentETLTool"):
                 TOOL_REGISTRY.register(DocumentETLTool(session_factory=self.session_factory))
             if not TOOL_REGISTRY.get_tool("BlueprintGenerationTool"):
-                TOOL_REGISTRY.register(BlueprintGenerationTool(session_factory=self.session_factory))
+                TOOL_REGISTRY.register(BlueprintGenerationTool(session_factory=self.session_factory,llm_client=llm_client))
             if not TOOL_REGISTRY.get_tool("GraphBuildTool"):
-                TOOL_REGISTRY.register(GraphBuildTool(session_factory=self.session_factory))
+                TOOL_REGISTRY.register(GraphBuildTool(session_factory=self.session_factory,llm_client=llm_client))
             if not TOOL_REGISTRY.get_tool("MemoryGraphBuildTool"):
-                TOOL_REGISTRY.register(MemoryGraphBuildTool(session_factory=self.session_factory))
-                
+                TOOL_REGISTRY.register(MemoryGraphBuildTool(session_factory=self.session_factory,llm_client=llm_client))
+
             self.logger.info("Tools registered successfully")
             
         except ImportError as e:
@@ -145,6 +149,7 @@ class PipelineOrchestrator:
                 
                 # Execute tool
                 self.logger.info(f"Executing tool: {tool_name}")
+                self.logger.info(f"Tool input: {tool_input}")
                 result = tool.execute_with_tracking(tool_input, f"{execution_id}_{tool_name}")
                 
                 if not result.success:
@@ -165,7 +170,9 @@ class PipelineOrchestrator:
             duration = (end_time - start_time).total_seconds()
             
             self.logger.info(f"Pipeline execution completed: {execution_id} in {duration:.2f}s")
-            
+
+            self.logger.info(f"Preparing final ToolResult:{results}\nPipeline: {tools}\n")
+
             return ToolResult(
                 success=True,
                 data={
