@@ -449,8 +449,8 @@ curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
 
 ### Relavant Settings for testing
 - **LLM Client**: Currently use default `llm_client` as `openai` with model `gpt-4o`
-- **Embedding Function**: Currently use default `embedding_model` as `text-embedding-3-small` with base_url `https://api.openai.com/v1`
-- Export environment variables `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`, `EMBEDDING_MODEL_API_KEY` and `OPENAI_API_KEY` before testing. Both keys use `OPENAI_API_KEY` currently.
+- **Embedding Function**: Currently use default `embedding_model` as `hf.co/Qwen/Qwen3-Embedding-8B-GGUF:Q8_0` with base_url `http://localhost:11434/v1/`
+- Export environment variables `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`, `EMBEDDING_MODEL_API_KEY` before testing.
 
 
 ### Available Pipeline Tools
