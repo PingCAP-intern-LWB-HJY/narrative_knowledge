@@ -263,10 +263,10 @@ Generate the global blueprint for "{topic_name}"."""
                 blueprint = db.query(AnalysisBlueprint).filter_by(topic_name=topic_name).first()
 
             if blueprint:
-                # 更新已有记录（例如更新内容或状态）
+                # update records
                 blueprint.processing_items = blueprint_items
                 blueprint.processing_instructions = processing_instructions
-                blueprint.status = "outdated"
+                blueprint.status = "updated"
             else:
                 blueprint = AnalysisBlueprint(
                     topic_name=topic_name,

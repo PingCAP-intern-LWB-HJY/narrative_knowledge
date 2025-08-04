@@ -1,7 +1,7 @@
 import logging
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any, Callable, Awaitable
+from typing import Optional, Dict, List, Any
 
 from fastapi import APIRouter, Request, HTTPException, status, UploadFile, Form
 from fastapi.responses import JSONResponse
@@ -260,16 +260,18 @@ async def save_data(
 
 from tools.route_wrapper import ToolsRouteWrapper
 
-# 在模块级别创建包装器实例
+
 tools_wrapper = ToolsRouteWrapper()
 
 @router.post("/save_pipeline", response_model=APIResponse, status_code=status.HTTP_200_OK)
 async def save_data_pipeline(
     request: Request,
     file: Optional[UploadFile] = Form(None),
+    files: Optional[List[UploadFile]] = Form(None),
     metadata: Optional[str] = Form(None),
     target_type: Optional[str] = Form(None),
     process_strategy: Optional[str] = Form(None),
+    links: Optional[str] = Form(None),
 ) -> JSONResponse:
     """
     Enhanced save endpoint using tools pipeline system.
@@ -277,22 +279,64 @@ async def save_data_pipeline(
     content_type = request.headers.get("content-type", "")
 
     if "multipart/form-data" in content_type:
-        # 文件上传处理
-        if not file or not metadata or not target_type:
+        # Document Uploading Processing
+        upload_files = []
+        if files and len(files) > 0:
+            # Batch files upload
+            upload_files = files
+        elif file:
+            # Single file upload
+            upload_files = [file]
+        else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="For multipart/form-data, 'file', 'metadata', and 'target_type' are required.",
+                detail="For multipart/form-data, either 'file' (single upload) or 'files' (batch upload) is required.",
             )
         
-        # 使用 tools 包装器处理
+        if not metadata or not target_type:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="For multipart/form-data, 'metadata' and 'target_type' are required.",
+            )
+        
+        # Verify links and files have the same numbers
+        if links:
+            try:
+                parsed_links = json.loads(links) if isinstance(links, str) else links
+                if isinstance(parsed_links, str):
+                    parsed_links = [parsed_links]
+                if len(parsed_links) != len(upload_files):
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "success": False,
+                            "message": f"Number of links ({len(parsed_links)}) must match number of files ({len(upload_files)})",
+                            "data": {}
+                        }
+                    )
+            except json.JSONDecodeError:
+                # Handle as comma-separated string
+                link_list = [link.strip() for link in str(links).split(",") if link.strip()]
+                if len(link_list) != len(upload_files):
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "success": False,
+                            "message": f"Number of links ({len(link_list)}) must match number of files ({len(upload_files)})",
+                            "data": {}
+                        }
+                    )
+        
+        # Use tools wrapper
         result = tools_wrapper.process_upload_request(
-            files=file,
+            files=upload_files,
             metadata=metadata,
             process_strategy=process_strategy,
-            target_type=target_type
+            target_type=target_type,
+            links=links
         )
         logger.info(f"Processed upload request: {result.to_dict()}")
-        # 转换为 API 响应格式
+        # Transform to API response format
         if result.success:
             return JSONResponse(
                 status_code=200,
@@ -305,7 +349,7 @@ async def save_data_pipeline(
             )
 
     elif "application/json" in content_type:
-        # JSON 数据处理
+        # JSON Processing
         body = await request.json()
         
         result = tools_wrapper.process_json_request(

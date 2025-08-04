@@ -564,9 +564,9 @@ class DocumentETLTool(BaseTool):
                     # Normalize content type to match job standards
                     if source_type == "pdf":
                         source_type = "application/pdf"
-                    elif source_type == "md":
+                    elif source_type == "markdown":     # align with the outputs from extract_source_data()
                         source_type = "text/markdown"
-                    elif source_type == "txt":
+                    elif source_type == "document":
                         source_type = "text/plain"
                     elif source_type == "sql":
                         source_type = "application/sql"

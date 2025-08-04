@@ -239,7 +239,11 @@ Enhanced endpoint for saving and processing data using the tools pipeline system
 - `multipart/form-data`: For file uploads
 - `application/json`: For JSON data input
 
-#### For File Uploads (`multipart/form-data`):
+### For File Uploads (`multipart/form-data`):
+
+#### Single File Uploading
+
+##### Method 1: Put `link` inside `metadata`
 
 **Parameters:**
 - `file`: The file to be uploaded (required)
@@ -257,6 +261,29 @@ Enhanced endpoint for saving and processing data using the tools pipeline system
 curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
   -F "file=@document.pdf" \
   -F 'metadata={"topic_name":"study","link":"https://example.com/doc"}' \
+  -F "target_type=knowledge_graph" \
+  -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
+```
+
+##### Method 2: Separate `link` and `metadata`
+
+**Parameters:**
+- `files`: Single file to be uploaded (required)
+- `links`: [List] Original document link
+- `metadata`: JSON string containing processing metadata (required)
+  - `topic_name`: Topic name for knowledge graph building
+  - Additional custom metadata fields
+- `target_type`: Processing target type (required, e.g., "knowledge_graph")
+- `process_strategy`: JSON string with processing pipeline configuration (optional)
+  - `pipeline`: Array of tool names to execute in sequence
+  - Example: `{"pipeline": ["etl", "blueprint_gen", "graph_build"]}`
+
+**Example using curl:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
+  -F "files=@pipeline_design.md" \
+  -F 'links=["https://docs.com/doc1"]' \
+  -F 'metadata={"topic_name":"single0"}' \
   -F "target_type=knowledge_graph" \
   -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
 ```
@@ -311,7 +338,148 @@ curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
 }
 ```
 
-#### For JSON Input (`application/json`):
+#### Batch Files Uploading
+
+**Parameters:**
+- `files`: Batch files to be uploaded (required)
+- `links`: [List] Original document links (optional, must match the number of files)
+- `metadata`: JSON string containing processing metadata (required)
+  - `topic_name`: Topic name for knowledge graph building
+  - Additional custom metadata fields
+- `target_type`: Processing target type (required, e.g., "knowledge_graph")
+- `process_strategy`: JSON string with processing pipeline configuration (optional)
+  - `pipeline`: Array of tool names to execute in sequence
+  - Example: `{"pipeline": ["etl", "blueprint_gen", "graph_build"]}`
+
+**Example using curl:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
+  -F "files=@pipeline_design.md" \
+  -F "files=@SmartSave_api_v1.md" \
+  -F "files=@knowledge_graph_quality_standard.md" \
+  -F 'links=["https://docs.com/doc1", "https://docs.com/doc2", "https://test.com/files"]' \
+  -F 'metadata={"topic_name":"batch_t1"}' \
+  -F "target_type=knowledge_graph" \
+  -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "results": {
+      "DocumentETLTool": {
+        "success": true, 
+        "data": {
+          "source_data_ids": ["505f936e-d130-442b-95d5-f71677912208","0ac2d49c-d7ea-43fc-8304-3146ab38227d","a4af367d-b141-4c3e-a525-75d27f8a296c"],
+          "results": [{
+            "source_data_id": "505f936e-d130-442b-95d5-f71677912208",
+            "content_hash": "8a8a18f81dc598d0d70aa645e24957cad56aaeda01f5ab9eddd46ff6ca847795",
+            "content_size": 8184,
+            "source_type": "text/markdown",
+            "reused_existing": true,
+            "status": "success",
+            "file_path": "/var/folders/1l/ncvsdgnj74b127ww1sc4d0t00000gn/T/tmpi6k628u5/0_pipeline_design.md"
+          },
+            {
+            "source_data_id": "0ac2d49c-d7ea-43fc-8304-3146ab38227d",
+            "content_hash": "742c13197253c16bcc5fdec6fa7048c2492f4cf6946714d9fbc26a7df948e1ad",
+            "content_size": 4106,
+            "source_type": "text/markdown",
+            "reused_existing": true,
+            "status": "success",
+            "file_path": "/var/folders/1l/ncvsdgnj74b127ww1sc4d0t00000gn/T/tmpi6k628u5/1_SmartSave_api_v1.md"
+          },
+            {
+            "source_data_id": "a4af367d-b141-4c3e-a525-75d27f8a296c",
+            "content_hash": "4c7d00f36c2f0dddad20cf5e6e36a7176d820c2ffefe35ece545775995e2a9b8",
+            "content_size": 8841,
+            "source_type": "text/markdown",
+            "reused_existing": false,
+            "status": "success",
+            "file_path": "/var/folders/1l/ncvsdgnj74b127ww1sc4d0t00000gn/T/tmpi6k628u5/2_knowledge_graph_quality_standard.md"
+          }],
+          "batch_summary": {
+            "total_files": 3,
+            "processed_files": 1,
+            "reused_files": 2,
+            "failed_files": 0
+          }
+        },
+        "error_message": null,
+        "metadata": {
+          "topic_name": "batch_t1",
+          "total_files": 3
+        },
+        "execution_id": "1f12e7df-ef01-4037-9268-7688298dbfb0_DocumentETLTool",
+        "duration_seconds": 5.791588,
+        "timestamp": "2025-08-04T21:10:42.725552+00:00"
+      },
+      "BlueprintGenerationTool": {
+        "success": true,
+        "data": {
+          "blueprint_id": "cc039049-0584-4cee-a3f6-0736d8b45056",
+          "reused_existing": false,
+          "contributing_source_data_count": 3,
+          "source_data_version_hash": "59e4c02cbd094d25e50ec216c983a909aa89bcd4421e2555c1d4b6483bf76b46",
+          "blueprint_summary": {
+            "canonical_entities_count": 3,
+            "key_patterns_count": 3,
+            "global_timeline_events": 2,
+            "processing_instructions_length": 632,
+            "cognitive_maps_used": 3
+          }
+        },
+        "error_message": null,
+        "metadata": {
+          "topic_name": "batch_t1",
+          "source_data_count": 3,
+          "cognitive_maps_count": 3
+        },
+        "execution_id": "1f12e7df-ef01-4037-9268-7688298dbfb0_BlueprintGenerationTool",
+        "duration_seconds": 29.842363,
+        "timestamp": "2025-08-04T21:11:12.568225+00:00"
+      },
+      "GraphBuildTool": {
+        "success": true,
+        "data": {
+          "blueprint_id": "cc039049-0584-4cee-a3f6-0736d8b45056",
+          "processed_count": 1,
+          "failed_count": 0,
+          "total_entities_created": 2,
+          "total_relationships_created": 1,
+          "total_triplets_extracted": 1,
+          "results": [{
+            "source_data_id": "a4af367d-b141-4c3e-a525-75d27f8a296c",
+            "status": "success",
+            "entities_created": 2,
+            "relationships_created": 1,
+            "triplets_extracted": 1
+          }]
+        },
+        "error_message": null,
+        "metadata": {
+          "blueprint_id":"cc039049-0584-4cee-a3f6-0736d8b45056",
+          "source_data_count": 3
+        },
+        "execution_id": "1f12e7df-ef01-4037-9268-7688298dbfb0_GraphBuildTool",
+        "duration_seconds": 20.814152,
+        "timestamp": "2025-08-04T21:11:33.024326+00:00"
+      }
+    },
+    "pipeline": ["DocumentETLTool","BlueprintGenerationTool","GraphBuildTool"],
+    "duration_seconds": 56.450806
+  },
+  "error_message": null,
+  "metadata": {},
+  "execution_id": "1f12e7df-ef01-4037-9268-7688298dbfb0",
+  "duration_seconds": 56.450806,
+  "timestamp": "2025-08-04T21:11:33.384224+00:00"
+}
+```
+
+### For JSON Input (`application/json`):
 
 **Parameters:**
 - `input`: The raw data to process - can be chat history array or any JSON data (required)
@@ -350,7 +518,7 @@ curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
   }'
 ```
 
-**Example using curl (raw JSON data):**
+**Example using curl (raw JSON data) (Not supported yet):**
 ```bash
 curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
   -H "Content-Type: application/json" \
@@ -374,6 +542,7 @@ curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
     }
   }'
 ```
+
 **Response (For memory processing):**
 ```json
 {
@@ -407,7 +576,8 @@ curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
     "pipeline": ["MemoryGraphBuildTool"],
     "duration_seconds": 32.593757
   },
-  "execution_id": "dea4dcb1-9325-492e-8dec-d9afd9a0046d"}%  
+  "execution_id": "dea4dcb1-9325-492e-8dec-d9afd9a0046d"
+}
 ```
 
 **Response:**
@@ -450,7 +620,7 @@ curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
 ### Relavant Settings for testing
 - **LLM Client**: Currently use default `llm_client` as `openai` with model `gpt-4o`
 - **Embedding Function**: Currently use default `embedding_model` as `hf.co/Qwen/Qwen3-Embedding-8B-GGUF:Q8_0` with base_url `http://localhost:11434/v1/`
-- Export environment variables `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`, `EMBEDDING_MODEL_API_KEY` before testing.
+- Export environment variables `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`, `EMBEDDING_MODEL_API_KEY`, `DATABASE_URI` before testing.
 
 
 ### Available Pipeline Tools
