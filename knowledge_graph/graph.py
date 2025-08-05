@@ -204,7 +204,7 @@ Generate the global blueprint for "{topic_name}"."""
             logger.info(
                 f"Generating global blueprint for {topic_name} with {len(cognitive_maps)} cognitive maps"
             )
-            # 为跑通流程暂时这样写
+            # Write it this way temporarily to make the process work
             from llm.factory import LLMInterface
             llm_client = LLMInterface("openai", model="gpt-4o")
             response = llm_client.generate(blueprint_prompt, max_tokens=8192)
@@ -263,7 +263,7 @@ Generate the global blueprint for "{topic_name}"."""
                 blueprint = db.query(AnalysisBlueprint).filter_by(topic_name=topic_name).first()
 
             if blueprint:
-                # 更新已有记录（例如更新内容或状态）
+                # Update existing records (e.g., update content or status)
                 blueprint.processing_items = blueprint_items
                 blueprint.processing_instructions = processing_instructions
                 blueprint.status = "outdated"

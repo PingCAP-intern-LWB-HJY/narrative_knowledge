@@ -20,18 +20,18 @@ from setting.db import SessionLocal
 class BlueprintGenerationTool(BaseTool):
     """
     Creates analysis blueprints by analyzing all documents in a topic.
-    
+
     This tool takes all SourceData for a topic, generates cognitive maps,
     and creates a comprehensive AnalysisBlueprint that serves as shared
     context for processing individual documents within that topic.
-    
+
     Input Schema:
         topic_name (str): Name of the topic to generate blueprint
         source_data_ids (list[str], optional): Specific source data IDs
         force_regenerate (bool, optional)
         llm_client: (required)
         embedding_func: (optional)
-    
+
     Output Schema:
         blueprint_id (str): ID of created/updated AnalysisBlueprint
         source_data_version_hash (str): Hash of contributing source data versions
@@ -39,23 +39,30 @@ class BlueprintGenerationTool(BaseTool):
         blueprint_summary (dict): Summary of blueprint content
         reused_existing (bool): Whether existing blueprint was reused
     """
-    
-    def __init__(self, session_factory=None, llm_client=None, embedding_func: Optional[Callable] = None):
+
+    def __init__(
+        self,
+        session_factory=None,
+        llm_client=None,
+        embedding_func: Optional[Callable] = None,
+    ):
         super().__init__(session_factory=session_factory)
         self.session_factory = session_factory or SessionLocal
         self.llm_client = llm_client
         self.embedding_func = embedding_func
-        
+
         # Initialize components
         self.cm_generator: Optional[DocumentCognitiveMapGenerator] = None
         self.graph_builder: Optional[NarrativeKnowledgeGraphBuilder] = None
-    
+
     def _initialize_components(self):
         """Initialize cognitive map generator and graph builder."""
         if not self.llm_client:
             raise ValueError("LLM client is required for blueprint generation")
         if self.embedding_func is None:
-            raise ValueError("Embedding function need to be Callable for blueprint generation")
+            raise ValueError(
+                "Embedding function need to be Callable for blueprint generation"
+            )
         if not self.cm_generator:
             self.cm_generator = DocumentCognitiveMapGenerator(
                 self.llm_client, self.session_factory, worker_count=3
@@ -67,7 +74,7 @@ class BlueprintGenerationTool(BaseTool):
     @property
     def tool_name(self) -> str:
         return "BlueprintGenerationTool"
-        
+
     @property
     def tool_key(self) -> str:
         return "blueprint_gen"
@@ -84,28 +91,28 @@ class BlueprintGenerationTool(BaseTool):
             "properties": {
                 "topic_name": {
                     "type": "string",
-                    "description": "Name of the topic to generate blueprint for"
+                    "description": "Name of the topic to generate blueprint for",
                 },
                 "source_data_ids": {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Optional list of specific source data IDs to include",
-                    "default": None
+                    "default": None,
                 },
                 "force_regenerate": {
                     "type": "boolean",
                     "description": "Force regeneration even if up-to-date",
-                    "default": False
+                    "default": False,
                 },
                 "llm_client": {
                     "type": "object",
-                    "description": "LLM client instance for blueprint generation"
+                    "description": "LLM client instance for blueprint generation",
                 },
                 "embedding_func": {
                     "type": "object",
-                    "description": "Embedding function for vector operations"
-                }
-            }
+                    "description": "Embedding function for vector operations",
+                },
+            },
         }
 
     @property
@@ -115,15 +122,15 @@ class BlueprintGenerationTool(BaseTool):
             "properties": {
                 "blueprint_id": {
                     "type": "string",
-                    "description": "ID of created/updated AnalysisBlueprint record"
+                    "description": "ID of created/updated AnalysisBlueprint record",
                 },
                 "source_data_version_hash": {
                     "type": "string",
-                    "description": "Hash of contributing source data versions"
+                    "description": "Hash of contributing source data versions",
                 },
                 "contributing_source_data_count": {
                     "type": "integer",
-                    "description": "Number of source data record that contributed to the blueprint"
+                    "description": "Number of source data record that contributed to the blueprint",
                 },
                 "blueprint_summary": {
                     "type": "object",
@@ -133,47 +140,55 @@ class BlueprintGenerationTool(BaseTool):
                         "key_patterns_count": {"type": "integer"},
                         "global_timeline_events": {"type": "integer"},
                         "processing_instructions_length": {"type": "integer"},
-                        "cognitive_maps_used": {"type": "integer"}
-                    }
+                        "cognitive_maps_used": {"type": "integer"},
+                    },
                 },
                 "reused_existing": {
                     "type": "boolean",
-                    "description": "Whether existing blueprint was reused"
-                }
-            }
+                    "description": "Whether existing blueprint was reused",
+                },
+            },
         }
-    
+
     def validate_input(self, input_data: Dict[str, Any]) -> bool:
         """Validate input parameters with detailed error information."""
         topic_name = input_data.get("topic_name")
         if not topic_name:
-            self.logger.error("Validation error: Missing required parameter: 'topic_name'")
+            self.logger.error(
+                "Validation error: Missing required parameter: 'topic_name'"
+            )
             return False
         if not isinstance(topic_name, str):
-            self.logger.error(f"Validation error: 'topic_name' must be a string, got {type(topic_name).__name__}")
+            self.logger.error(
+                f"Validation error: 'topic_name' must be a string, got {type(topic_name).__name__}"
+            )
             return False
-            
+
         # Validate source_data_ids if provided
         source_data_ids = input_data.get("source_data_ids")
         if source_data_ids is not None:
             if not isinstance(source_data_ids, list):
-                self.logger.error(f"Validation error: 'source_data_ids' must be a list, got {type(source_data_ids).__name__}")
+                self.logger.error(
+                    f"Validation error: 'source_data_ids' must be a list, got {type(source_data_ids).__name__}"
+                )
                 return False
             for i, source_id in enumerate(source_data_ids):
                 if not isinstance(source_id, str):
-                    self.logger.error(f"Validation error: source_data_ids[{i}] must be a string, got {type(source_id).__name__}")
+                    self.logger.error(
+                        f"Validation error: source_data_ids[{i}] must be a string, got {type(source_id).__name__}"
+                    )
                     return False
-        
+
         # Validate required LLM client
-            
+
         # Validate embedding function
-            
+
         return True
 
     def execute(self, input_data: Dict[str, Any]) -> ToolResult:
         """
         Generate an analysis blueprint for a topic.
-        
+
         Args:
             input_data: Dictionary containing:
                 - topic_name: Name of the topic to generate blueprint for
@@ -181,7 +196,7 @@ class BlueprintGenerationTool(BaseTool):
                 - force_regenerate: Whether to force regeneration
                 - llm_client: LLM client instance (required)
                 - embedding_func: Embedding function (optional)
-                
+
         Returns:
             ToolResult with blueprint generation results
         """
@@ -189,31 +204,31 @@ class BlueprintGenerationTool(BaseTool):
             topic_name = input_data["topic_name"]
             source_data_ids = input_data.get("source_data_ids")
             force_regenerate = input_data.get("force_regenerate", False)
-            
+
             # Get LLM client from input or use provided one
             llm_client = input_data.get("llm_client", self.llm_client)
             embedding_func = input_data.get("embedding_func", self.embedding_func)
-            
+
             if not llm_client:
                 return ToolResult(
                     success=False,
-                    error_message="LLM client is required for blueprint generation"
+                    error_message="LLM client is required for blueprint generation",
                 )
-            
+
             # Initialize components with provided clients
             self.llm_client = llm_client
             self.embedding_func = embedding_func
             self._initialize_components()
-            
+
             self.logger.info(f"Starting blueprint generation for topic: {topic_name}")
-            
+
             with self.session_factory() as db:
                 # Get source data for the topic
                 query = db.query(SourceData).filter(SourceData.topic_name == topic_name)
-                
+
                 if source_data_ids:
                     query = query.filter(SourceData.id.in_(source_data_ids))
-                
+
                 source_data_list = query.order_by(SourceData.created_at).all()
 
                 self.logger.info(f"Retrieved source_data_list: {source_data_list}")
@@ -221,114 +236,145 @@ class BlueprintGenerationTool(BaseTool):
                 if not source_data_list:
                     return ToolResult(
                         success=False,
-                        error_message=f"No source data found for topic: {topic_name}"
+                        error_message=f"No source data found for topic: {topic_name}",
                     )
-                
+
                 # Calculate version hash from all source data versions
-                version_input = "|".join(sorted([sd.content_hash for sd in source_data_list]))
+                version_input = "|".join(
+                    sorted([sd.content_hash for sd in source_data_list])
+                )
                 version_hash = hashlib.sha256(version_input.encode("utf-8")).hexdigest()
 
-                self.logger.info(f"Calculated version hash for source_data_list: {version_hash}")
+                self.logger.info(
+                    f"Calculated version hash for source_data_list: {version_hash}"
+                )
 
                 # Check if blueprint is up-to-date (unless forcing regeneration)
                 if not force_regenerate:
-                    existing_blueprint = db.query(AnalysisBlueprint).filter(
-                        AnalysisBlueprint.topic_name == topic_name,
-                        AnalysisBlueprint.status == "ready",
-                        AnalysisBlueprint.source_data_version_hash == version_hash
-                    ).first()
-                    
+                    existing_blueprint = (
+                        db.query(AnalysisBlueprint)
+                        .filter(
+                            AnalysisBlueprint.topic_name == topic_name,
+                            AnalysisBlueprint.status == "ready",
+                            AnalysisBlueprint.source_data_version_hash == version_hash,
+                        )
+                        .first()
+                    )
+
                     if existing_blueprint:
-                        self.logger.info(f"Blueprint already up-to-date for topic: {topic_name}")
+                        self.logger.info(
+                            f"Blueprint already up-to-date for topic: {topic_name}"
+                        )
                         return ToolResult(
                             success=True,
                             data={
                                 "blueprint_id": existing_blueprint.id,
                                 "reused_existing": True,
                                 "contributing_source_data_count": len(source_data_list),
-                                "source_data_version_hash": version_hash
+                                "source_data_version_hash": version_hash,
                             },
                             metadata={
                                 "topic_name": topic_name,
-                                "source_data_count": len(source_data_list)
-                            }
+                                "source_data_count": len(source_data_list),
+                            },
                         )
-                
+
                 # Create or update blueprint record
-                blueprint = db.query(AnalysisBlueprint).filter(
-                    AnalysisBlueprint.topic_name == topic_name
-                ).first()
-                
+                blueprint = (
+                    db.query(AnalysisBlueprint)
+                    .filter(AnalysisBlueprint.topic_name == topic_name)
+                    .first()
+                )
+
                 if not blueprint:
                     blueprint = AnalysisBlueprint(
                         topic_name=topic_name,
                         status="generating",
                         source_data_version_hash="",
-                        contributing_source_data_ids=[]
+                        contributing_source_data_ids=[],
                     )
                     db.add(blueprint)
                     db.flush()
                 else:
                     blueprint.status = "generating"
                     blueprint.error_message = None
-                
+
                 blueprint_id = blueprint.id
-                
+
                 # Convert source data to document format
                 documents = self._convert_source_data_to_documents(source_data_list)
 
-                self.logger.info(f"successfully converted {len(documents)} source data records to documents for cognitive map generation")
+                self.logger.info(
+                    f"successfully converted {len(documents)} source data records to documents for cognitive map generation"
+                )
                 db.commit()  # Commit to ensure blueprint is created
             try:
                 # Ensure components are properly initialized
                 if not self.cm_generator or not self.graph_builder:
                     raise ValueError("Required components not initialized")
-                
+
                 # Generate cognitive maps for all documents
-                self.logger.info(f"Generating cognitive maps for {len(documents)} documents")
+                self.logger.info(
+                    f"Generating cognitive maps for {len(documents)} documents"
+                )
                 cognitive_maps = self.cm_generator.batch_generate_cognitive_maps(
                     topic_name, documents, force_regenerate=force_regenerate
                 )
-                
+
                 if not cognitive_maps:
-                    raise ValueError(f"Failed to generate cognitive maps for topic: {topic_name}")
-                
+                    raise ValueError(
+                        f"Failed to generate cognitive maps for topic: {topic_name}"
+                    )
+
                 # Generate analysis blueprint
-                self.logger.info(f"Generating analysis blueprint from {len(cognitive_maps)} cognitive maps")
+                self.logger.info(
+                    f"Generating analysis blueprint from {len(cognitive_maps)} cognitive maps"
+                )
                 blueprint_result = self.graph_builder.generate_analysis_blueprint(
                     topic_name, cognitive_maps, force_regenerate=True
                 )
                 self.logger.info(f"Generated blueprint result: {blueprint_result}")
-                
-                
+
                 # Update blueprint with results
                 with self.session_factory() as db:
-                    blueprint = db.query(AnalysisBlueprint).filter(
-                        AnalysisBlueprint.id == blueprint_id
-                    ).first()
-                    
+                    blueprint = (
+                        db.query(AnalysisBlueprint)
+                        .filter(AnalysisBlueprint.id == blueprint_id)
+                        .first()
+                    )
+
                     blueprint.status = "ready"
                     blueprint.processing_items = blueprint_result.processing_items
-                    blueprint.processing_instructions = blueprint_result.processing_instructions
+                    blueprint.processing_instructions = (
+                        blueprint_result.processing_instructions
+                    )
                     blueprint.source_data_version_hash = version_hash
-                    blueprint.contributing_source_data_ids = [doc["source_id"] for doc in documents]
+                    blueprint.contributing_source_data_ids = [
+                        doc["source_id"] for doc in documents
+                    ]
                     blueprint.error_message = None
-                    
+
                     db.commit()
-                
+
                 # Prepare summary
                 processing_items = blueprint_result.processing_items or {}
                 processing_instructions = blueprint_result.processing_instructions or ""
                 summary = {
-                    "canonical_entities_count": len(processing_items.get("canonical_entities", {})),
+                    "canonical_entities_count": len(
+                        processing_items.get("canonical_entities", {})
+                    ),
                     "key_patterns_count": len(processing_items.get("key_patterns", {})),
-                    "global_timeline_events": len(processing_items.get("global_timeline", [])),
+                    "global_timeline_events": len(
+                        processing_items.get("global_timeline", [])
+                    ),
                     "processing_instructions_length": len(str(processing_instructions)),
-                    "cognitive_maps_used": len(cognitive_maps)
+                    "cognitive_maps_used": len(cognitive_maps),
                 }
-                
-                self.logger.info(f"Blueprint generation completed for topic: {topic_name}")
-                
+
+                self.logger.info(
+                    f"Blueprint generation completed for topic: {topic_name}"
+                )
+
                 return ToolResult(
                     success=True,
                     data={
@@ -336,47 +382,48 @@ class BlueprintGenerationTool(BaseTool):
                         "reused_existing": False,
                         "contributing_source_data_count": len(source_data_list),
                         "source_data_version_hash": version_hash,
-                        "blueprint_summary": summary
+                        "blueprint_summary": summary,
                     },
                     metadata={
                         "topic_name": topic_name,
                         "source_data_count": len(source_data_list),
-                        "cognitive_maps_count": len(cognitive_maps)
-                    }
+                        "cognitive_maps_count": len(cognitive_maps),
+                    },
                 )
-                
+
             except Exception as e:
                 # Update blueprint status to failed
                 with self.session_factory() as db:
-                    blueprint = db.query(AnalysisBlueprint).filter(
-                        AnalysisBlueprint.id == blueprint_id
-                    ).first()
+                    blueprint = (
+                        db.query(AnalysisBlueprint)
+                        .filter(AnalysisBlueprint.id == blueprint_id)
+                        .first()
+                    )
                     if blueprint:
                         blueprint.status = "failed"
                         blueprint.error_message = str(e)
                         db.commit()
-                
+
                 raise e
-                
+
         except Exception as e:
             self.logger.error(f"Blueprint generation failed: {e}")
-            return ToolResult(
-                success=False,
-                error_message=str(e)
-            )
-    
-    def _convert_source_data_to_documents(self, source_data_list: List[SourceData]) -> List[Dict[str, Any]]:
+            return ToolResult(success=False, error_message=str(e))
+
+    def _convert_source_data_to_documents(
+        self, source_data_list: List[SourceData]
+    ) -> List[Dict[str, Any]]:
         """
         Convert SourceData records to document format for cognitive map generation.
-        
+
         Args:
             source_data_list: List of SourceData records
-            
+
         Returns:
             List of document dictionaries
         """
         documents = []
-        
+
         for source_data in source_data_list:
             document = {
                 "source_id": source_data.id,
@@ -384,10 +431,10 @@ class BlueprintGenerationTool(BaseTool):
                 "source_content": source_data.effective_content or "",
                 "source_attributes": source_data.attributes or {},
                 "source_link": source_data.link,
-                "topic_name": source_data.topic_name
+                "topic_name": source_data.topic_name,
             }
             documents.append(document)
-        
+
         return documents
 
 

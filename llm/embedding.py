@@ -30,22 +30,22 @@ def get_entity_metadata_embedding(metadata: dict):
 
 def text_based_mock_embedding(text: str, dimension: int = 4096) -> List[float]:
     """
-    基于文本特征生成模拟嵌入向量，相似文本会有相似向量。
+    Generate simulated embedding vectors based on text features, similar texts will have similar vectors.
     """
-    # 清理文本
+    # Clean text
     text = text.lower().strip()
     
-    # 基于文本长度、字符分布等特征
+    # Based on text length, character distribution and other features
     text_hash = hashlib.md5(text.encode()).hexdigest()
     
     vector = []
     for i in range(dimension):
-        # 使用文本hash和位置生成确定性的值
+        # Use text hash and position to generate deterministic values
         seed_val = int(text_hash[i % len(text_hash)], 16) + i
         val = math.sin(seed_val) * math.cos(len(text) + i)
         vector.append(val)
     
-    # 归一化
+    # Normalize
     norm = sum(x**2 for x in vector) ** 0.5
     if norm > 0:
         vector = [x / norm for x in vector]

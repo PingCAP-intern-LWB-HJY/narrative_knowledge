@@ -30,7 +30,9 @@ class DocumentCognitiveMapGenerator:
             llm_client: LLM interface for generating cognitive maps
             session_factory: Database session factory. If None, uses default SessionLocal.
         """
-        self.llm_client = LLMInterface("openai", model="gpt-4o") if llm_client is None else llm_client
+        self.llm_client = (
+            LLMInterface("openai", model="gpt-4o") if llm_client is None else llm_client
+        )
         self.SessionLocal = session_factory or SessionLocal
         self.worker_count = worker_count
 
@@ -298,9 +300,12 @@ Return only the JSON, no other text."""
                 f"Generating cognitive map by prompt {cognitive_map_prompt[:100]}... "
             )
             from llm.factory import LLMInterface
+
             llm_client = LLMInterface("openai", model="gpt-4o")
             response = llm_client.generate(cognitive_map_prompt)
-            logger.info(f"successfully generated response for document: {document['source_name']}")
+            logger.info(
+                f"successfully generated response for document: {document['source_name']}"
+            )
 
             # Use robust JSON parsing with escape error fixing and LLM fallback
             cognitive_map_data = robust_json_parse(response, self.llm_client, "object")

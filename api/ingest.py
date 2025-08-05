@@ -204,7 +204,7 @@ async def _handle_json_data(request: Request) -> JSONResponse:
         )
 
 
-@router.post("/save", response_model=APIResponse, status_code=status.HTTP_200_OK)
+@router.post("/save_old", response_model=APIResponse, status_code=status.HTTP_200_OK)
 async def save_data(
     request: Request,
     file: Optional[UploadFile] = Form(None),
@@ -260,13 +260,13 @@ async def save_data(
 
 from tools.route_wrapper import ToolsRouteWrapper
 
-# 在模块级别创建包装器实例
+# Create wrapper instance at module level
 tools_wrapper = ToolsRouteWrapper()
 
-@router.post("/save_pipeline", response_model=APIResponse, status_code=status.HTTP_200_OK)
+@router.post("/save", response_model=APIResponse, status_code=status.HTTP_200_OK)
 async def save_data_pipeline(
     request: Request,
-    file: Optional[UploadFile] = Form(None),
+    file: Optional[UploadFile] = Form(None), # TODO: should be List[UploadFile] for multiple files
     metadata: Optional[str] = Form(None),
     target_type: Optional[str] = Form(None),
     process_strategy: Optional[str] = Form(None),
@@ -277,14 +277,14 @@ async def save_data_pipeline(
     content_type = request.headers.get("content-type", "")
 
     if "multipart/form-data" in content_type:
-        # 文件上传处理
+        # File upload processing
         if not file or not metadata or not target_type:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="For multipart/form-data, 'file', 'metadata', and 'target_type' are required.",
             )
         
-        # 使用 tools 包装器处理
+        # Use tools wrapper to process
         result = tools_wrapper.process_upload_request(
             files=file,
             metadata=metadata,
@@ -292,7 +292,7 @@ async def save_data_pipeline(
             target_type=target_type
         )
         logger.info(f"Processed upload request: {result.to_dict()}")
-        # 转换为 API 响应格式
+        # Convert to API response format
         if result.success:
             return JSONResponse(
                 status_code=200,
@@ -305,7 +305,7 @@ async def save_data_pipeline(
             )
 
     elif "application/json" in content_type:
-        # JSON 数据处理
+        # JSON data processing
         body = await request.json()
         
         result = tools_wrapper.process_json_request(
