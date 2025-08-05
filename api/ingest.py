@@ -204,7 +204,7 @@ async def _handle_json_data(request: Request) -> JSONResponse:
         )
 
 
-@router.post("/save", response_model=APIResponse, status_code=status.HTTP_200_OK)
+@router.post("/save_old", response_model=APIResponse, status_code=status.HTTP_200_OK)
 async def save_data(
     request: Request,
     file: Optional[UploadFile] = Form(None),
@@ -260,10 +260,10 @@ async def save_data(
 
 from tools.route_wrapper import ToolsRouteWrapper
 
-
+# Create wrapper instance at module level
 tools_wrapper = ToolsRouteWrapper()
 
-@router.post("/save_pipeline", response_model=APIResponse, status_code=status.HTTP_200_OK)
+@router.post("/save", response_model=APIResponse, status_code=status.HTTP_200_OK)
 async def save_data_pipeline(
     request: Request,
     file: Optional[UploadFile] = Form(None),
@@ -336,7 +336,7 @@ async def save_data_pipeline(
             links=links
         )
         logger.info(f"Processed upload request: {result.to_dict()}")
-        # Transform to API response format
+        # Convert to API response format
         if result.success:
             return JSONResponse(
                 status_code=200,
@@ -349,7 +349,7 @@ async def save_data_pipeline(
             )
 
     elif "application/json" in content_type:
-        # JSON Processing
+        # JSON data processing
         body = await request.json()
         
         result = tools_wrapper.process_json_request(

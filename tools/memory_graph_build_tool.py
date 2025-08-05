@@ -20,20 +20,20 @@ logger = logging.getLogger(__name__)
 class MemoryGraphBuildTool(GraphBuildTool):
     """
     Extended GraphBuildTool for memory-specific processing.
-    
-    This tool integrates PersonalMemorySystem functionality directly into the 
-    pipeline architecture, replacing standalone memory processing with 
+
+    This tool integrates PersonalMemorySystem functionality directly into the
+    pipeline architecture, replacing standalone memory processing with
     tool-based processing.
     """
-    
+
     def __init__(self, session_factory=None, llm_client=None, embedding_func=None):
         super().__init__(session_factory, llm_client, embedding_func)
         self.memory_system = None
-    
+
     @property
     def tool_name(self) -> str:
         return "MemoryGraphBuildTool"
-        
+
     @property
     def tool_key(self) -> str:
         return "memory_graph_build"
@@ -53,34 +53,50 @@ class MemoryGraphBuildTool(GraphBuildTool):
                     "items": {
                         "type": "object",
                         "properties": {
-                            "content": {"type": "string", "description": "The message content"},
-                            "session_id": {"type": "string", "description": "Conversation session ID"},
-                            "conversation_title": {"type": "string", "description": "Title of the conversation"},
-                            "date": {"type": "string", "description": "ISO format timestamp"},
-                            "role": {"type": "string", "enum": ["user", "assistant"], "description": "Message role"}
+                            "content": {
+                                "type": "string",
+                                "description": "The message content",
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": "Conversation session ID",
+                            },
+                            "conversation_title": {
+                                "type": "string",
+                                "description": "Title of the conversation",
+                            },
+                            "date": {
+                                "type": "string",
+                                "description": "ISO format timestamp",
+                            },
+                            "role": {
+                                "type": "string",
+                                "enum": ["user", "assistant"],
+                                "description": "Message role",
+                            },
                         },
-                        "required": ["content", "role"]
+                        "required": ["content", "role"],
                     },
-                    "description": "List of chat messages to process"
+                    "description": "List of chat messages to process",
                 },
                 "user_id": {
                     "type": "string",
-                    "description": "User identifier for memory categorization"
+                    "description": "User identifier for memory categorization",
                 },
                 "force_regenerate": {
                     "type": "boolean",
                     "description": "Force regeneration even if already processed",
-                    "default": False
+                    "default": False,
                 },
                 "llm_client": {
                     "type": "object",
-                    "description": "LLM client instance for processing"
+                    "description": "LLM client instance for processing",
                 },
                 "embedding_func": {
                     "type": "object",
-                    "description": "Embedding function for vector operations"
-                }
-            }
+                    "description": "Embedding function for vector operations",
+                },
+            },
         }
 
     @property
@@ -89,23 +105,41 @@ class MemoryGraphBuildTool(GraphBuildTool):
             "type": "object",
             "properties": {
                 "user_id": {"type": "string", "description": "User identifier"},
-                "topic_name": {"type": "string", "description": "Generated topic name for this user"},
-                "source_data_id": {"type": "string", "description": "ID of created SourceData"},
-                "knowledge_block_id": {"type": "string", "description": "ID of created KnowledgeBlock"},
-                "entities_created": {"type": "integer", "description": "Number of entities created"},
-                "relationships_created": {"type": "integer", "description": "Number of relationships created"},
-                "triplets_extracted": {"type": "integer", "description": "Number of triplets extracted"},
-                "status": {"type": "string", "description": "Processing status"}
-            }
+                "topic_name": {
+                    "type": "string",
+                    "description": "Generated topic name for this user",
+                },
+                "source_data_id": {
+                    "type": "string",
+                    "description": "ID of created SourceData",
+                },
+                "knowledge_block_id": {
+                    "type": "string",
+                    "description": "ID of created KnowledgeBlock",
+                },
+                "entities_created": {
+                    "type": "integer",
+                    "description": "Number of entities created",
+                },
+                "relationships_created": {
+                    "type": "integer",
+                    "description": "Number of relationships created",
+                },
+                "triplets_extracted": {
+                    "type": "integer",
+                    "description": "Number of triplets extracted",
+                },
+                "status": {"type": "string", "description": "Processing status"},
+            },
         }
-    
+
     def validate_input(self, input_data: Dict[str, Any]) -> bool:
         """
         Validate input data against the tool's input schema.
-        
+
         Args:
             input_data: Input data to validate
-            
+
         Returns:
             True if valid, False otherwise
         """
@@ -116,13 +150,13 @@ class MemoryGraphBuildTool(GraphBuildTool):
                 if field not in input_data:
                     print(f"Missing required field: {field}")
                     return False
-            
+
             # Validate chat_messages structure
             chat_messages = input_data.get("chat_messages", [])
             if not isinstance(chat_messages, list):
                 print("chat_messages must be a list")
                 return False
-            
+
             for msg in chat_messages:
                 if not isinstance(msg, dict):
                     print("Each chat message must be a dict")
@@ -133,7 +167,7 @@ class MemoryGraphBuildTool(GraphBuildTool):
                 if msg.get("role") not in ["user", "assistant"]:
                     print("Role must be 'user' or 'assistant'")
                     return False
-            
+
             return True
         except Exception as e:
             print(f"MemoryGraphBuildTool validation error: {e}")
@@ -142,7 +176,7 @@ class MemoryGraphBuildTool(GraphBuildTool):
     def execute(self, input_data: Dict[str, Any]) -> ToolResult:
         """
         Process chat messages through memory pipeline and build knowledge graph.
-        
+
         Args:
             input_data: Dictionary containing:
                 - chat_messages: List of chat message dicts
@@ -150,7 +184,7 @@ class MemoryGraphBuildTool(GraphBuildTool):
                 - force_reprocess: Whether to force reprocessing
                 - llm_client: LLM client instance
                 - embedding_func: Embedding function
-                
+
         Returns:
             ToolResult with memory processing results
         """
@@ -158,86 +192,87 @@ class MemoryGraphBuildTool(GraphBuildTool):
             chat_messages = input_data.get("chat_messages", [])
             user_id = input_data.get("user_id")
             force_regenerate = input_data.get("force_regenerate", False)
-            
+
             if not chat_messages:
                 return ToolResult(
-                    success=False,
-                    error_message="No chat messages provided"
+                    success=False, error_message="No chat messages provided"
                 )
-            
+
             if not user_id:
-                return ToolResult(
-                    success=False,
-                    error_message="user_id is required"
-                )
-            
+                return ToolResult(success=False, error_message="user_id is required")
+
             # Get LLM client from input or use provided one
-            llm_client = input_data.get("llm_client", LLMInterface("openai", model="gpt-4o"))
+            llm_client = input_data.get(
+                "llm_client", LLMInterface("openai", model="gpt-4o")
+            )
             if not llm_client:
                 return ToolResult(
                     success=False,
-                    error_message="LLM client is required for graph building"
+                    error_message="LLM client is required for graph building",
                 )
             embedding_func = input_data.get("embedding_func", self.embedding_func)
-            
+
             # Initialize components with provided clients
             self.llm_client = llm_client
             self.logger.info("successfully initialized LLM client")
             self.embedding_func = embedding_func
             self._initialize_components()
-            
+
             # Initialize memory system
             memory_system = PersonalMemorySystem(
                 llm_client=llm_client,
                 embedding_func=embedding_func,
-                session_factory=self.session_factory
+                session_factory=self.session_factory,
             )
-            
+
             # Generate topic name for this user
             topic_name = generate_topic_name_for_personal_memory(user_id)
-            
+
             # Check if this exact batch was already processed
             if not force_regenerate:
-                existing_result = self._check_existing_processing(chat_messages, user_id)
+                existing_result = self._check_existing_processing(
+                    chat_messages, user_id
+                )
                 if existing_result:
                     return existing_result
-            
+
             # Process through memory system (creates SourceData, Blueprint, KnowledgeBlock)
             memory_result = memory_system.process_chat_batch(chat_messages, user_id)
-            
+
             if not memory_result or "source_id" not in memory_result:
                 return ToolResult(
                     success=False,
-                    error_message="Memory system failed to process chat messages"
+                    error_message="Memory system failed to process chat messages",
                 )
-            
+
             # Now process the created SourceData through graph building
             source_data_id = memory_result["source_id"]
-            
+
             # Get the personal blueprint created by memory system
             with self.session_factory() as db:
-                blueprint = db.query(AnalysisBlueprint).filter(
-                    AnalysisBlueprint.topic_name == topic_name
-                ).order_by(AnalysisBlueprint.created_at.desc()).first()
-                
+                blueprint = (
+                    db.query(AnalysisBlueprint)
+                    .filter(AnalysisBlueprint.topic_name == topic_name)
+                    .order_by(AnalysisBlueprint.created_at.desc())
+                    .first()
+                )
+
                 if not blueprint:
                     return ToolResult(
                         success=False,
-                        error_message=f"No personal blueprint found for topic: {topic_name}"
+                        error_message=f"No personal blueprint found for topic: {topic_name}",
                     )
-                
+
                 blueprint_id = blueprint.id
-            
+
             # Process through graph building using the parent class
             graph_result = self._process_single_document(
-                blueprint_id, 
-                source_data_id, 
-                force_regenerate
+                blueprint_id, source_data_id, force_regenerate
             )
-            
+
             if not graph_result.success:
                 return graph_result
-            
+
             # Combine results
             final_result = {
                 "user_id": user_id,
@@ -245,56 +280,61 @@ class MemoryGraphBuildTool(GraphBuildTool):
                 "source_data_id": source_data_id,
                 "knowledge_block_id": memory_result.get("knowledge_block_id"),
                 "entities_created": graph_result.data.get("entities_created", 0),
-                "relationships_created": graph_result.data.get("relationships_created", 0),
+                "relationships_created": graph_result.data.get(
+                    "relationships_created", 0
+                ),
                 "triplets_extracted": graph_result.data.get("triplets_extracted", 0),
-                "status": "completed"
+                "status": "completed",
             }
-            
+
             return ToolResult(
                 success=True,
                 data=final_result,
                 metadata={
                     "user_id": user_id,
                     "message_count": len(chat_messages),
-                    "topic_name": topic_name
-                }
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Memory processing failed: {e}")
-            return ToolResult(
-                success=False,
-                error_message=str(e)
+                    "topic_name": topic_name,
+                },
             )
 
-    def _check_existing_processing(self, chat_messages: List[Dict], user_id: str) -> Optional[ToolResult]:
+        except Exception as e:
+            self.logger.error(f"Memory processing failed: {e}")
+            return ToolResult(success=False, error_message=str(e))
+
+    def _check_existing_processing(
+        self, chat_messages: List[Dict], user_id: str
+    ) -> Optional[ToolResult]:
         """
         Check if this exact chat batch was already processed.
-        
+
         Args:
             chat_messages: List of chat messages
             user_id: User identifier
-            
+
         Returns:
             ToolResult if already processed, None otherwise
         """
         try:
             import hashlib
             import json
-            
+
             # Generate content hash for deduplication
             content_json = json.dumps(chat_messages, sort_keys=True, ensure_ascii=False)
             content_hash = hashlib.sha256(content_json.encode("utf-8")).hexdigest()
-            
+
             topic_name = generate_topic_name_for_personal_memory(user_id)
-            
+
             with self.session_factory() as db:
                 # Check for existing SourceData with this content hash
-                source_data = db.query(SourceData).filter(
-                    SourceData.topic_name == topic_name,
-                    SourceData.attributes.contains({"content_hash": content_hash})
-                ).first()
-                
+                source_data = (
+                    db.query(SourceData)
+                    .filter(
+                        SourceData.topic_name == topic_name,
+                        SourceData.attributes.contains({"content_hash": content_hash}),
+                    )
+                    .first()
+                )
+
                 if source_data and source_data.status == "graph_completed":
                     return ToolResult(
                         success=True,
@@ -306,13 +346,16 @@ class MemoryGraphBuildTool(GraphBuildTool):
                             "relationships_created": 0,
                             "triplets_extracted": 0,
                             "status": "already_processed",
-                            "reused_existing": True
+                            "reused_existing": True,
                         },
-                        metadata={"user_id": user_id, "message_count": len(chat_messages)}
+                        metadata={
+                            "user_id": user_id,
+                            "message_count": len(chat_messages),
+                        },
                     )
-            
+
             return None
-            
+
         except Exception as e:
             self.logger.warning(f"Error checking existing processing: {e}")
             return None

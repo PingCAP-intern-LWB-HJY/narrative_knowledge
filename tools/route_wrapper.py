@@ -10,15 +10,16 @@ from tools.base import ToolResult
 from llm.factory import LLMInterface
 from llm.embedding import get_text_embedding
 
+
 class ToolsRouteWrapper:
     """
     Route wrapper that converts FastAPI's UploadFile to a format processable by the tools system
     """
-    
+
     def __init__(self, session_factory=None):
         self.api_integration = PipelineAPIIntegration(session_factory)
         self.temp_dir = Path(tempfile.mkdtemp())
-        
+
     def process_upload_request(
         self,
         files: Union[UploadFile, List[UploadFile]],
@@ -27,11 +28,11 @@ class ToolsRouteWrapper:
         target_type: str = "knowledge_graph",
         links: Optional[Union[str, List[str]]] = None,
         llm_client=None,
-        embedding_func=None
+        embedding_func=None,
     ) -> ToolResult:
         """
         Route wrapper function: Process file upload requests
-        
+
         Args:
             files: FastAPI UploadFile object or list
             metadata: Metadata (can be JSON string or dict)
@@ -40,7 +41,7 @@ class ToolsRouteWrapper:
             links: List of URLs/links corresponding to files (can be JSON string or list)
             llm_client: LLM client (optional, will auto-create)
             embedding_func: Embedding function (optional, will auto-create)
-            
+
         Returns:
             ToolResult: Processing result
         """
@@ -63,24 +64,24 @@ class ToolsRouteWrapper:
             
             # 4. Construct request_data
             request_data = self._build_request_data(
-                target_type, parsed_metadata, parsed_strategy, 
-                llm_client, embedding_func
+                target_type,
+                parsed_metadata,
+                parsed_strategy,
+                llm_client,
+                embedding_func,
             )
             
             # 5. Call tools system
             result = self.api_integration.process_request(
-                request_data=request_data,
-                files=prepared_files
+                request_data=request_data, files=prepared_files
             )
-            
+
             return result
-            
+
         except Exception as e:
             # Return tool results in standard format
             return ToolResult(
-                success=False,
-                error_message=f"Route wrapper error: {str(e)}",
-                data={}
+                success=False, error_message=f"Route wrapper error: {str(e)}", data={}
             )
         finally:
             # clean up temp files
@@ -93,11 +94,11 @@ class ToolsRouteWrapper:
         process_strategy: Optional[Union[str, Dict[str, Any]]] = None,
         target_type: str = "personal_memory",
         llm_client=None,
-        embedding_func=None
+        embedding_func=None,
     ) -> ToolResult:
         """
         Route wrapper function: Process JSON data requests (e.g., chat logs)
-        
+
         Args:
             input_data: Input data (chat logs, text, etc.)
             metadata: Metadata
@@ -105,7 +106,7 @@ class ToolsRouteWrapper:
             target_type: Target type
             llm_client: LLM client
             embedding_func: Embedding function
-            
+
         Returns:
             ToolResult: Processing result
         """
@@ -122,8 +123,11 @@ class ToolsRouteWrapper:
             
             # 3. Construct request_data
             request_data = self._build_request_data(
-                target_type, parsed_metadata, parsed_strategy,
-                llm_client, embedding_func
+                target_type,
+                parsed_metadata,
+                parsed_strategy,
+                llm_client,
+                embedding_func,
             )
             
             # 4. Add input data
@@ -135,17 +139,14 @@ class ToolsRouteWrapper:
             
             # 5. Call tools system（without files)
             result = self.api_integration.process_request(
-                request_data=request_data,
-                files=[]
+                request_data=request_data, files=[]
             )
-            
+
             return result
-            
+
         except Exception as e:
             return ToolResult(
-                success=False,
-                error_message=f"JSON request error: {str(e)}",
-                data={}
+                success=False, error_message=f"JSON request error: {str(e)}", data={}
             )
 
     def _parse_metadata(self, metadata: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
@@ -157,7 +158,9 @@ class ToolsRouteWrapper:
                 raise ValueError(f"Invalid JSON in metadata: {e}")
         return metadata or {}
 
-    def _parse_process_strategy(self, process_strategy: Optional[Union[str, Dict[str, Any]]]) -> Dict[str, Any]:
+    def _parse_process_strategy(
+        self, process_strategy: Optional[Union[str, Dict[str, Any]]]
+    ) -> Dict[str, Any]:
         """Parse processing strategy"""
         if process_strategy is None:
             return {}
@@ -218,20 +221,20 @@ class ToolsRouteWrapper:
                 "metadata": {},  # file-specific metadata
                 "link": link,
                 "content_type": file.content_type,
-                "size": len(file_content)
+                "size": len(file_content),
             }
-            
+
             prepared_files.append(file_info)
-        
+
         return prepared_files
 
     def _build_request_data(
-        self, 
-        target_type: str, 
-        metadata: Dict[str, Any], 
+        self,
+        target_type: str,
+        metadata: Dict[str, Any],
         process_strategy: Dict[str, Any],
-        llm_client, 
-        embedding_func
+        llm_client,
+        embedding_func,
     ) -> Dict[str, Any]:
         """Build request data"""
         return {
@@ -240,7 +243,7 @@ class ToolsRouteWrapper:
             "process_strategy": process_strategy,
             "llm_client": llm_client,
             "embedding_func": embedding_func,
-            "force_regenerate": metadata.get("force_regenerate", False)
+            "force_regenerate": metadata.get("force_regenerate", False),
         }
 
     def _cleanup_temp_files(self, prepared_files: List[Dict[str, Any]]):
@@ -257,8 +260,9 @@ class ToolsRouteWrapper:
     def __del__(self):
         """Cleanup temporary directory"""
         try:
-            if hasattr(self, 'temp_dir') and self.temp_dir.exists():
+            if hasattr(self, "temp_dir") and self.temp_dir.exists():
                 import shutil
+
                 shutil.rmtree(self.temp_dir)
         except Exception:
             pass

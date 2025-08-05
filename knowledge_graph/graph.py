@@ -204,7 +204,7 @@ Generate the global blueprint for "{topic_name}"."""
             logger.info(
                 f"Generating global blueprint for {topic_name} with {len(cognitive_maps)} cognitive maps"
             )
-            # 为跑通流程暂时这样写
+            # Write it this way temporarily to make the process work
             from llm.factory import LLMInterface
             llm_client = LLMInterface("openai", model="gpt-4o")
             response = llm_client.generate(blueprint_prompt, max_tokens=8192)
