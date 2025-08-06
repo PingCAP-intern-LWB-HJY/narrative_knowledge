@@ -231,7 +231,7 @@ The API uses standardized error responses for all endpoints:
 
 ## Enhanced Data Processing Pipeline
 
-**POST** `/api/v1/save_pipeline`
+**POST** `/api/v1/save`
 
 Enhanced endpoint for saving and processing data using the tools pipeline system. Supports both file uploads and JSON input with configurable processing strategies and detailed execution tracking.
 
@@ -241,54 +241,83 @@ Enhanced endpoint for saving and processing data using the tools pipeline system
 
 ### For File Uploads (`multipart/form-data`):
 
-#### Single File Uploading
-
-##### Method 1: Put `link` inside `metadata`
-
+#### Method 1: Separate `links` Parameter (single string or array)
 **Parameters:**
-- `file`: The file to be uploaded (required)
+- `files`: Single/Batch file(s) to be uploaded (required)
+- `links`: Original document link (optional, must match the number of files, single string or array)
 - `metadata`: JSON string containing processing metadata (required)
-  - `topic_name`: Topic name for knowledge graph building
-  - `link`: Original document link
+  - `topic_name`: Topic name for knowledge graph building (required)
+  - `force_regenerate`: [Boolean] Whether to force regeneration if data already been processed (optional)
   - Additional custom metadata fields
 - `target_type`: Processing target type (required, e.g., "knowledge_graph")
 - `process_strategy`: JSON string with processing pipeline configuration (optional)
   - `pipeline`: Array of tool names to execute in sequence
   - Example: `{"pipeline": ["etl", "blueprint_gen", "graph_build"]}`
 
-**Example using curl:**
+**Examples using curl:**
+Single File Uploading:
+
 ```bash
-curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
-  -F "file=@document.pdf" \
-  -F 'metadata={"topic_name":"study","link":"https://example.com/doc"}' \
-  -F "target_type=knowledge_graph" \
-  -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
-```
-
-##### Method 2: Separate `link` and `metadata`
-
-**Parameters:**
-- `files`: Single file to be uploaded (required)
-- `links`: [List] Original document link
-- `metadata`: JSON string containing processing metadata (required)
-  - `topic_name`: Topic name for knowledge graph building
-  - Additional custom metadata fields
-- `target_type`: Processing target type (required, e.g., "knowledge_graph")
-- `process_strategy`: JSON string with processing pipeline configuration (optional)
-  - `pipeline`: Array of tool names to execute in sequence
-  - Example: `{"pipeline": ["etl", "blueprint_gen", "graph_build"]}`
-
-**Example using curl:**
-```bash
-curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
+curl -X POST "http://localhost:8000/api/v1/save" \
   -F "files=@pipeline_design.md" \
-  -F 'links=["https://docs.com/doc1"]' \
-  -F 'metadata={"topic_name":"single0"}' \
+  -F 'links="https://docs.com/doc1"' \
+  -F 'metadata={"topic_name":"single0","force_regenerate":"True"}' \
   -F "target_type=knowledge_graph" \
   -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
 ```
 
-**Response:**
+Batch Files Uploading: 
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/save" \
+  -F "files=@pipeline_design.md" \
+  -F "files=@SmartSave_api_v1.md" \
+  -F "files=@knowledge_graph_quality_standard.md" \
+  -F 'links=["https://docs.com/doc1", "https://docs.com/doc2", "https://test.com/files"]' \
+  -F 'metadata={"topic_name":"batch_t1","force_regenerate":"False"}' \
+  -F "target_type=knowledge_graph" \
+  -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
+```
+
+#### Alternative Method to include `links`
+##### Include `links` directly in metadata (single string or array)
+
+**Parameters:**
+- `files`: Single/Batch files to be uploaded (required)
+- `metadata`: JSON string containing processing metadata (required)
+  - `topic_name`: Topic name for knowledge graph building (required)
+  - `links`: Original document links (optional, single string or array)
+  - `force_regenerate`: [Boolean] Force regeneration if data already been processed (optional)
+  - Additional custom metadata fields
+- `target_type`: Processing target type (required, e.g., "knowledge_graph")
+- `process_strategy`: JSON string with processing pipeline configuration (optional)
+  - `pipeline`: Array of tool names to execute in sequence
+  - Example: `{"pipeline": ["etl", "blueprint_gen", "graph_build"]}`
+
+**Examples using curl:**
+Single File uploading:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/save" \
+  -F "files=@pipeline_design.md" \
+  -F 'metadata={"topic_name":"single0","links":"https://example.com/doc"}' \
+  -F "target_type=knowledge_graph" \
+  -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
+```
+
+Batch Files Uploading:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/save" \
+  -F "files=@pipeline_design.md" \
+  -F "files=@SmartSave_api_v1.md" \
+  -F "files=@knowledge_graph_quality_standard.md" \
+  -F 'metadata={"topic_name":"batch_t1","links":["https://example.com/doc","https://docs.com/doc2", "https://test.com/files"]}' \
+  -F "target_type=knowledge_graph" \
+  -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
+```
+
+**Response (For Single File Uploading):**
 ```json
 {
   "success": true,
@@ -338,32 +367,9 @@ curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
 }
 ```
 
-#### Batch Files Uploading
 
-**Parameters:**
-- `files`: Batch files to be uploaded (required)
-- `links`: [List] Original document links (optional, must match the number of files)
-- `metadata`: JSON string containing processing metadata (required)
-  - `topic_name`: Topic name for knowledge graph building
-  - Additional custom metadata fields
-- `target_type`: Processing target type (required, e.g., "knowledge_graph")
-- `process_strategy`: JSON string with processing pipeline configuration (optional)
-  - `pipeline`: Array of tool names to execute in sequence
-  - Example: `{"pipeline": ["etl", "blueprint_gen", "graph_build"]}`
 
-**Example using curl:**
-```bash
-curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
-  -F "files=@pipeline_design.md" \
-  -F "files=@SmartSave_api_v1.md" \
-  -F "files=@knowledge_graph_quality_standard.md" \
-  -F 'links=["https://docs.com/doc1", "https://docs.com/doc2", "https://test.com/files"]' \
-  -F 'metadata={"topic_name":"batch_t1"}' \
-  -F "target_type=knowledge_graph" \
-  -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
-```
-
-**Response:**
+**Response (For Batch Files Uploading):**
 ```json
 {
   "success": true,
@@ -484,7 +490,7 @@ curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
 **Parameters:**
 - `input`: The raw data to process - can be chat history array or any JSON data (required)
 - `metadata`: JSON object with processing context (required)
-  - `user_id`: User identifier for personal memory processing
+  - `user_id`: User identifier for personal memory processing (required)
   - Additional context fields as needed
 - `target_type`: Processing target type (required, e.g., "personal_memory")
 - `process_strategy`: JSON object with processing pipeline configuration (optional)
@@ -494,7 +500,7 @@ curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
 
 **Example using curl (chat history):**
 ```bash
-curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
+curl -X POST "http://localhost:8000/api/v1/save" \
   -H "Content-Type: application/json" \
   -d '{
     "input": [
@@ -520,7 +526,7 @@ curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
 
 **Example using curl (raw JSON data) (Not supported yet):**
 ```bash
-curl -X POST "http://localhost:8000/api/v1/save_pipeline" \
+curl -X POST "http://localhost:8000/api/v1/save" \
   -H "Content-Type: application/json" \
   -d '{
     "input": {

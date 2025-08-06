@@ -490,19 +490,26 @@ class PipelineOrchestrator:
         metadata = request_data.get("metadata", {})
 
         # Explicit pipeline execution
-        if "pipeline" in process_strategy and "knowledge_graph" in target_type:
-            pipeline = process_strategy["pipeline"]
-            self.logger.info(
-                f"We have process_strategy, with specific pipelines: {pipeline}"
-            )
-            try:
-                tools = [self.tool_key_mapping[key] for key in pipeline]
-            except KeyError as e:
-                return ToolResult(
-                    success=False,
-                    error_message=f"Invalid tool key {e} in pipeline configuration",
+        if "pipeline" in process_strategy:
+            if "knowledge_graph" in target_type:
+                pipeline = process_strategy["pipeline"]
+                self.logger.info(
+                    f"We have process_strategy, with target_type '{target_type}' and specific pipelines: {pipeline}"
                 )
-            return self.execute_custom_pipeline(tools, request_data, execution_id)
+                try:
+                    tools = [self.tool_key_mapping[key] for key in pipeline]
+                except KeyError as e:
+                    return ToolResult(
+                        success=False,
+                        error_message=f"Invalid tool key {e} in pipeline configuration",
+                    )
+                return self.execute_custom_pipeline(tools, request_data, execution_id)
+            elif "personal_memory" in target_type:
+                tools = ["MemoryGraphBuildTool"]
+                self.logger.info(
+                    f"We have process_strategy with target_type '{target_type}'. Using tool '{tools}'"
+                )
+                return self.execute_custom_pipeline(tools, request_data, execution_id)
 
         # Default pipeline selection
         topic_name = metadata.get("topic_name")

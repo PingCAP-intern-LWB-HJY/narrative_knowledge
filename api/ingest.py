@@ -266,7 +266,6 @@ tools_wrapper = ToolsRouteWrapper()
 @router.post("/save", response_model=APIResponse, status_code=status.HTTP_200_OK)
 async def save_data_pipeline(
     request: Request,
-    file: Optional[UploadFile] = Form(None),
     files: Optional[List[UploadFile]] = Form(None),
     metadata: Optional[str] = Form(None),
     target_type: Optional[str] = Form(None),
@@ -279,57 +278,43 @@ async def save_data_pipeline(
     content_type = request.headers.get("content-type", "")
 
     if "multipart/form-data" in content_type:
-        # Document Uploading Processing
-        upload_files = []
-        if files and len(files) > 0:
-            # Batch files upload
-            upload_files = files
-        elif file:
-            # Single file upload
-            upload_files = [file]
-        else:
+        # Validate required parameters
+        if not files or len(files) == 0 or not metadata or not target_type:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="For multipart/form-data, either 'file' (single upload) or 'files' (batch upload) is required.",
+                detail="For multipart/form-data, 'files', 'metadata', and 'target_type' are required.",
             )
-        
-        if not metadata or not target_type:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="For multipart/form-data, 'metadata' and 'target_type' are required.",
-            )
-        
-        # Verify links and files have the same numbers
+       # Verify links and files have the same numbers
         if links:
             try:
                 parsed_links = json.loads(links) if isinstance(links, str) else links
                 if isinstance(parsed_links, str):
                     parsed_links = [parsed_links]
-                if len(parsed_links) != len(upload_files):
+                if len(parsed_links) != len(files):
                     return JSONResponse(
                         status_code=400,
                         content={
                             "success": False,
-                            "message": f"Number of links ({len(parsed_links)}) must match number of files ({len(upload_files)})",
+                            "message": f"Number of links ({len(parsed_links)}) must match number of files ({len(files)})",
                             "data": {}
                         }
                     )
             except json.JSONDecodeError:
                 # Handle as comma-separated string
                 link_list = [link.strip() for link in str(links).split(",") if link.strip()]
-                if len(link_list) != len(upload_files):
+                if len(link_list) != len(files):
                     return JSONResponse(
                         status_code=400,
                         content={
                             "success": False,
-                            "message": f"Number of links ({len(link_list)}) must match number of files ({len(upload_files)})",
+                            "message": f"Number of links ({len(link_list)}) must match number of files ({len(files)})",
                             "data": {}
                         }
                     )
         
         # Use tools wrapper
         result = tools_wrapper.process_upload_request(
-            files=upload_files,
+            files=files,
             metadata=metadata,
             process_strategy=process_strategy,
             target_type=target_type,

@@ -208,11 +208,29 @@ class ToolsRouteWrapper:
             # reset file pointer if repeated reading is required
             file.file.seek(0)
             
-            # Use separate links for new format, and support single link for the old one
+            # Resolve link with steps: links param > metadata.links > metadata.link > default
+            link = None
+            
+            # First: use provided links parameter
             if i < len(links):
                 link = links[i]
             else:
-                link = metadata.get("link", "")
+                # Second: check metadata.links (list or string)
+                metadata_links = metadata.get("links")
+                if isinstance(metadata_links, list) and metadata_links:
+                    link = metadata_links[min(i, len(metadata_links) - 1)]
+                elif isinstance(metadata_links, str) and metadata_links:
+                    link = metadata_links
+                
+                # Third: check metadata.link (single link)
+                if link is None:
+                    metadata_link = metadata.get("link")
+                    if metadata_link:
+                        link = metadata_link if isinstance(metadata_link, str) else metadata_link[0]
+
+                # Fallback: file:// URL
+                if link is None or link == "":
+                    link = f"file://{file.filename}"
             
             # construct file info
             file_info = {

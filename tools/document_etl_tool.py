@@ -498,34 +498,9 @@ class DocumentETLTool(BaseTool):
                 # Backward compatibility for single file processing
                 metadata = file_info.get("metadata", {})
 
-            # Handle link with proper source prioritization
-            def _get_valid_link(sources):
-                """Get first valid link from list of sources"""
-                for source in sources:
-                    link = source.get("link") if isinstance(source, dict) else source
-                    if link and link not in [None, "", {}]:
-                        return link
-                return None
 
-            # Determine link based on processing mode
-            if "request_metadata" in file_info:
-                # Batch processing: file_info -> file_metadata -> request_metadata -> fallback
-                link = (
-                    _get_valid_link(
-                        [
-                            file_info,
-                            file_info.get("file_metadata", {}),
-                            file_info.get("request_metadata", {}),
-                        ]
-                    )
-                    or f"file://{file_path}"
-                )
-            else:
-                # Single file processing: file_info -> metadata -> fallback
-                link = (
-                    _get_valid_link([file_info, file_info.get("metadata", {})])
-                    or f"file://{file_path}"
-                )
+            # Link is already resolved in route_wrapper.py
+            link = file_info.get("link", f"file://{file_path}")
 
             original_filename = file_info.get("filename", file_path.name)
 
