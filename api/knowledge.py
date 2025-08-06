@@ -21,8 +21,7 @@ from api.models import (
     TopicSummary,
 )
 from knowledge_graph.models import (
-    SourceData,
-    GraphBuild,
+    RawDataSource,
 )
 
 logger = logging.getLogger(__name__)
@@ -205,11 +204,10 @@ def _save_uploaded_file_with_metadata(
         # This is sufficient since build_id uniquely identifies doc_link + database_uri
         with SessionLocal() as db:
             existing_build_status = (
-                db.query(GraphBuild)
+                db.query(RawDataSource)
                 .filter(
-                    GraphBuild.build_id == build_id,
-                    GraphBuild.topic_name == metadata.topic_name,
-                    GraphBuild.external_database_uri == external_db_uri,
+                    RawDataSource.id == build_id,
+                    RawDataSource.topic_name == metadata.topic_name,
                 )
                 .first()
             )
@@ -288,7 +286,7 @@ def _save_uploaded_file_with_metadata(
 
 
 def _create_processing_task(
-    storage_directory: Path, metadata: DocumentMetadata, build_id: str
+    file: UploadFile, storage_directory: Path, metadata: DocumentMetadata, build_id: str
 ) -> None:
     """
     Create a background processing task for uploaded document.
@@ -312,14 +310,20 @@ def _create_processing_task(
             if db_manager.is_local_mode(metadata.database_uri)
             else metadata.database_uri
         )
-
+        file_content = file.file.read()
+        file_hash = hashlib.sha256(file_content).hexdigest()
+        logger.info(
+            f"Creating processing task for {storage_directory} with build_id: {build_id}, "
+            f"file_hash: {file_hash}, external_db_uri: {external_db_uri}"
+        )
         with SessionLocal() as db:
-            build_status = GraphBuild(
+            build_status = RawDataSource(
                 topic_name=metadata.topic_name,
-                build_id=build_id,
-                external_database_uri=external_db_uri,
-                storage_directory=str(storage_directory),
-                doc_link=metadata.doc_link,
+                id=build_id,
+                file_path=str(storage_directory),
+                file_hash=file_hash,
+                original_filename=file.filename,
+                raw_data_source_metadata=metadata.dict(),
                 status="uploaded",
             )
             db.add(build_status)

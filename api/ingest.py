@@ -8,8 +8,10 @@ from fastapi.responses import JSONResponse
 
 from api.models import APIResponse, DocumentMetadata, ProcessedDocument
 from api.memory import _get_memory_system
-from knowledge_graph.models import GraphBuild
+from knowledge_graph.models import RawDataSource
 from setting.db import SessionLocal, db_manager
+
+import asyncio
 
 # Functions imported from api.knowledge for reuse
 from api.knowledge import (
@@ -55,21 +57,15 @@ async def _process_file_for_knowledge_graph(
         custom_metadata=custom_metadata,
     )
 
-    storage_directory, build_id = _save_uploaded_file_with_metadata(
-        file, file_metadata
-    )
+    storage_directory, build_id = _save_uploaded_file_with_metadata(file, file_metadata)
 
     is_existing = False
-    external_db_uri = (
-        "" if db_manager.is_local_mode(database_uri) else database_uri or ""
-    )
     with SessionLocal() as db:
         build_status = (
-            db.query(GraphBuild)
+            db.query(RawDataSource)
             .filter(
-                GraphBuild.build_id == build_id,
-                GraphBuild.topic_name == topic_name,
-                GraphBuild.external_database_uri == external_db_uri,
+                RawDataSource.id == build_id,
+                RawDataSource.topic_name == topic_name,
             )
             .first()
         )
@@ -79,7 +75,7 @@ async def _process_file_for_knowledge_graph(
     if is_existing:
         status_msg = "already_exists"
     else:
-        _create_processing_task(storage_directory, file_metadata, build_id)
+        _create_processing_task(file, storage_directory, file_metadata, build_id)
         status_msg = "uploaded"
 
     processed_doc = ProcessedDocument(
@@ -147,7 +143,9 @@ async def _handle_form_data(
 
     # Dispatch based on target_type for form-data
     if target_type == "knowledge_graph":
-        return await _process_file_for_knowledge_graph(file, metadata, process_strategy or {})
+        return await _process_file_for_knowledge_graph(
+            file, metadata, process_strategy or {}
+        )
     else:
         raise HTTPException(
             status_code=400,
@@ -249,7 +247,9 @@ async def save_data(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid JSON in process_strategy.",
                 )
-        return await _handle_form_data(file, metadata, target_type, parsed_process_strategy)
+        return await _handle_form_data(
+            file, metadata, target_type, parsed_process_strategy
+        )
     elif "application/json" in content_type:
         return await _handle_json_data(request)
     else:
@@ -258,10 +258,12 @@ async def save_data(
             detail="Unsupported content type. Use application/json or multipart/form-data.",
         )
 
+
 from tools.route_wrapper import ToolsRouteWrapper
 
 # Create wrapper instance at module level
 tools_wrapper = ToolsRouteWrapper()
+
 
 @router.post("/save", response_model=APIResponse, status_code=status.HTTP_200_OK)
 async def save_data_pipeline(
@@ -284,7 +286,7 @@ async def save_data_pipeline(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="For multipart/form-data, 'files', 'metadata', and 'target_type' are required.",
             )
-       # Verify links and files have the same numbers
+        # Verify links and files have the same numbers
         if links:
             try:
                 parsed_links = json.loads(links) if isinstance(links, str) else links
@@ -296,66 +298,70 @@ async def save_data_pipeline(
                         content={
                             "success": False,
                             "message": f"Number of links ({len(parsed_links)}) must match number of files ({len(files)})",
-                            "data": {}
-                        }
+                            "data": {},
+                        },
                     )
             except json.JSONDecodeError:
                 # Handle as comma-separated string
-                link_list = [link.strip() for link in str(links).split(",") if link.strip()]
+                link_list = [
+                    link.strip() for link in str(links).split(",") if link.strip()
+                ]
                 if len(link_list) != len(files):
                     return JSONResponse(
                         status_code=400,
                         content={
                             "success": False,
                             "message": f"Number of links ({len(link_list)}) must match number of files ({len(files)})",
-                            "data": {}
-                        }
+                            "data": {},
+                        },
                     )
-        
+        tasks = [
+            _handle_form_data(
+                file,
+                metadata,
+                target_type,
+            )
+            for file in files
+        ]
+        await asyncio.gather(*tasks)
         # Use tools wrapper
         result = tools_wrapper.process_upload_request(
             files=files,
             metadata=metadata,
             process_strategy=process_strategy,
             target_type=target_type,
-            links=links
+            links=links,
         )
         logger.info(f"Processed upload request: {result.to_dict()}")
         # Convert to API response format
         if result.success:
-            return JSONResponse(
-                status_code=200,
-                content=result.to_dict()
-            )
+            return JSONResponse(status_code=200, content=result.to_dict())
         else:
-            return JSONResponse(
-                status_code=500,
-                content=result.to_dict()
-            )
+            return JSONResponse(status_code=500, content=result.to_dict())
 
     elif "application/json" in content_type:
         # JSON data processing
         body = await request.json()
-        
+
         result = tools_wrapper.process_json_request(
             input_data=body.get("input"),
             metadata=body.get("metadata", {}),
             process_strategy=body.get("process_strategy"),
-            target_type=body.get("target_type", "personal_memory")
+            target_type=body.get("target_type", "personal_memory"),
         )
-        
+
         # Convert ToolResult to dict for JSON serialization
         result_dict = result.to_dict()
-        
+
         if result.success:
             return JSONResponse(
                 status_code=200,
                 content={
                     "success": True,
-                    "message": "Processing completed successfully", 
+                    "message": "Processing completed successfully",
                     "data": result_dict["data"],
-                    "execution_id": result_dict["execution_id"]
-                }
+                    "execution_id": result_dict["execution_id"],
+                },
             )
         else:
             return JSONResponse(
@@ -363,8 +369,8 @@ async def save_data_pipeline(
                 content={
                     "success": False,
                     "message": result_dict["error_message"],
-                    "execution_id": result_dict["execution_id"]
-                }
+                    "execution_id": result_dict["execution_id"],
+                },
             )
     else:
         raise HTTPException(

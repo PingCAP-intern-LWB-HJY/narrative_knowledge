@@ -49,7 +49,7 @@ class RawDataSource(Base):
 
     __tablename__ = "raw_data_sources"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String(64), primary_key=True)
     file_path = Column(String(512), nullable=False)
     original_filename = Column(String(255), nullable=False)
     topic_name = Column(String(255), nullable=False)  # Key attribute for grouping

@@ -6,6 +6,9 @@ from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+if DATABASE_URI is None:
+    raise ValueError("DATABASE_URI cannot be None when creating the engine.")
+
 engine = create_engine(
     DATABASE_URI,
     pool_size=SESSION_POOL_SIZE,
@@ -54,7 +57,7 @@ class DatabaseManager:
             # Let SQLAlchemy handle all the complexity
             # It automatically handles: dependency order, IF NOT EXISTS behavior, 
             # all attributes, indexes, constraints, etc.
-            # Base.metadata.drop_all(bind=engine)
+            Base.metadata.drop_all(bind=engine)
             Base.metadata.create_all(engine)
             logger.info("Successfully created/verified all tables in database")
                 
