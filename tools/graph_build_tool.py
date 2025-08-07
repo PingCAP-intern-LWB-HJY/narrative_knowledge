@@ -15,6 +15,7 @@ from knowledge_graph.graph import NarrativeKnowledgeGraphBuilder
 from knowledge_graph.congnitive_map import DocumentCognitiveMapGenerator
 from setting.db import SessionLocal
 from llm.factory import LLMInterface
+from llm.embedding import get_text_embedding, text_based_mock_embedding
 
 
 class GraphBuildTool(BaseTool):
@@ -43,8 +44,8 @@ class GraphBuildTool(BaseTool):
     def __init__(
         self,
         session_factory=None,
-        llm_client=None,
-        embedding_func=None,
+        llm_client=LLMInterface("openai", model="gpt-4o"),
+        embedding_func=text_based_mock_embedding,
         worker_count: int = 3,
     ):
         super().__init__(session_factory=session_factory)
@@ -224,29 +225,9 @@ class GraphBuildTool(BaseTool):
         try:
             self.logger.info("Starting GraphBuildTool execute")
             force_regenerate = input_data.get("force_regenerate", False)
-
-            # Get LLM client from input or use provided one
-            llm_client = input_data.get(
-                "llm_client", LLMInterface("openai", model="gpt-4o")
-            )
-            if not llm_client:
-                return ToolResult(
-                    success=False,
-                    error_message="LLM client is required for graph building",
-                )
-            embedding_func = input_data.get("embedding_func", self.embedding_func)
-
-            if not llm_client:
-                return ToolResult(
-                    success=False,
-                    error_message="LLM client is required for graph building",
-                )
-
             # Initialize components with provided clients
-            self.llm_client = llm_client
-            self.logger.info("successfully initialized LLM client")
-            self.embedding_func = embedding_func
             self._initialize_components()
+            self.logger.info("successfully initialized LLM client")
 
             # Determine processing mode
             if "blueprint_id" in input_data and "source_data_id" in input_data:
@@ -313,13 +294,13 @@ class GraphBuildTool(BaseTool):
                         success=False,
                         error_message=f"SourceData not found: {source_data_id}",
                     )
-
+                self.logger.info(f"Found SourceData: {source_data_id}")
                 blueprint = (
                     db.query(AnalysisBlueprint)
                     .filter(AnalysisBlueprint.id == blueprint_id)
                     .first()
                 )
-
+                self.logger.info(f"Found AnalysisBlueprint: {blueprint_id}")
                 if not blueprint:
                     return ToolResult(
                         success=False,

@@ -287,24 +287,6 @@ class DocumentETLTool(BaseTool):
                         f"Validation error: Files[{i}] must be a dict, got {type(file_info).__name__}"
                     )
                     return False
-
-                file_path = file_info.get("path")
-                if not file_path:
-                    self.logger.error(
-                        f"Validation error: Missing required field 'path' in files[{i}]"
-                    )
-                    return False
-                if not isinstance(file_path, str):
-                    self.logger.error(
-                        f"Validation error: Files[{i}]['path'] must be a string, got {type(file_path).__name__}"
-                    )
-                    return False
-                if not Path(file_path).exists():
-                    self.logger.error(
-                        f"Validation error: File not found: {file_path} (in files[{i}])"
-                    )
-                    return False
-
                 # Validate file metadata is dict
                 file_metadata = file_info.get("metadata", {})
                 if not isinstance(file_metadata, dict):
@@ -485,39 +467,34 @@ class DocumentETLTool(BaseTool):
     ) -> ToolResult:
         """Process a single file."""
         try:
-            file_path = Path(file_info["path"])
-
-            # Handle separated metadata
-            request_metadata = file_info.get("request_metadata", {})
-            file_metadata = file_info.get("file_metadata", {})
-
-            # For single file processing, use request_metadata as primary
-            if "request_metadata" in file_info:
-                metadata = request_metadata
-            else:
-                # Backward compatibility for single file processing
-                metadata = file_info.get("metadata", {})
-
-
             # Link is already resolved in route_wrapper.py
-            link = file_info.get("link", f"file://{file_path}")
+            link = file_info.get("link", None)
 
-            original_filename = file_info.get("filename", file_path.name)
+            original_filename = file_info.get("filename", None)
 
-            self.logger.info(f"Starting ETL processing for file: {file_path}")
-
-            # Check if file exists
-            if not file_path.exists():
-                return ToolResult(
-                    success=False, error_message=f"File not found: {file_path}"
-                )
-
-            # Calculate file hash for deduplication
-            with open(file_path, "rb") as f:
-                file_content = f.read()
-                file_hash = hashlib.sha256(file_content).hexdigest()
+            self.logger.info(f"Starting ETL processing for file: {original_filename}")
 
             with self.session_factory() as db:
+                raw_data_source = (
+                    db.query(RawDataSource)
+                    .filter_by(
+                        original_filename=file_info["filename"], topic_name=topic_name
+                    )
+                    .first()
+                )
+                if not raw_data_source:
+                    return ToolResult(
+                        success=False,
+                        error_message=f"RawDataSource not found for {file_info['filename']} in topic {topic_name}",
+                    )
+                file_path = raw_data_source.file_path
+                self.logger.info(
+                    "successfully found RawDataSource for file: %s", file_path
+                )
+                # calculate file hash
+                with open(file_path, "rb") as f:
+                    file_content = f.read()
+                    file_hash = hashlib.sha256(file_content).hexdigest()
                 # Check if we already have this content
                 content_store = (
                     db.query(ContentStore).filter_by(content_hash=file_hash).first()
@@ -525,32 +502,6 @@ class DocumentETLTool(BaseTool):
                 self.logger.info(
                     f"ContentStore lookup for {file_path}: {content_store}"
                 )
-                # Create or get RawDataSource record
-                raw_data_source = (
-                    db.query(RawDataSource)
-                    .filter_by(file_path=str(file_path), topic_name=topic_name)
-                    .first()
-                )
-                self.logger.info(
-                    f"RawDataSource lookup for {file_path}: {raw_data_source}"
-                )
-                if not raw_data_source:
-                    # Store request metadata in RawDataSource (for upload metadata)
-                    # File metadata is kept separate in SourceData.attributes
-                    raw_data_source = RawDataSource(
-                        file_path=str(file_path),
-                        topic_name=topic_name,
-                        file_hash=file_hash,
-                        original_filename=original_filename,
-                        raw_data_source_metadata=metadata,  # Use request metadata
-                        status="etl_pending",
-                    )
-                    db.add(raw_data_source)
-                    db.flush()
-                self.logger.info(
-                    f"RawDataSource created/updated for {file_path}: {raw_data_source.id}"
-                )
-                # Check if already processed and not forcing reprocess
                 if not force_regenerate:
                     existing_source_data = (
                         db.query(SourceData)
@@ -598,7 +549,9 @@ class DocumentETLTool(BaseTool):
                     # Normalize content type to match job standards
                     if source_type == "pdf":
                         source_type = "application/pdf"
-                    elif source_type == "markdown":     # align with the outputs from extract_source_data()
+                    elif (
+                        source_type == "markdown"
+                    ):  # align with the outputs from extract_source_data()
                         source_type = "text/markdown"
                     elif source_type == "document":
                         source_type = "text/plain"
@@ -621,13 +574,14 @@ class DocumentETLTool(BaseTool):
                     f"Extracted content from {file_path}, size: {len(content)} bytes"
                 )
                 # Create or update ContentStore
+
                 if not content_store:
                     content_store = ContentStore(
                         content_hash=file_hash,
                         content=content,
                         content_size=len(content),
                         content_type=source_type,
-                        name=file_path.stem,
+                        name=original_filename,
                         link=link,
                     )
                     db.add(content_store)
@@ -644,8 +598,6 @@ class DocumentETLTool(BaseTool):
                     link=link,
                     source_type=source_type,
                     attributes={
-                        "request_metadata": request_metadata,
-                        "file_metadata": file_metadata,
                         "file_path": str(file_path),
                         "original_filename": original_filename,
                         "file_size": len(file_content),

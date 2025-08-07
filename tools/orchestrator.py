@@ -471,13 +471,13 @@ class PipelineOrchestrator:
             return blueprint.id if blueprint else None
 
     def execute_with_process_strategy(
-        self, request_data: Dict[str, Any], execution_id: Optional[str] = None
+        self, context: Dict[str, Any], execution_id: Optional[str] = None
     ) -> ToolResult:
         """
         Execute pipeline based on process strategy parameter from API request.
 
         Args:
-            request_data: API request data containing process_strategy
+            context: API request data containing process_strategy
             execution_id: Optional execution ID
 
         Returns:
@@ -485,40 +485,33 @@ class PipelineOrchestrator:
         """
         execution_id = execution_id or str(uuid.uuid4())
 
-        process_strategy = request_data.get("process_strategy", {})
-        target_type = request_data.get("target_type", {})
-        metadata = request_data.get("metadata", {})
+        process_strategy = context.get("process_strategy", {})
+        target_type = context.get("target_type", {})
+        metadata = context.get("metadata", {})
 
         # Explicit pipeline execution
-        if "pipeline" in process_strategy:
-            if "knowledge_graph" in target_type:
-                pipeline = process_strategy["pipeline"]
-                self.logger.info(
-                    f"We have process_strategy, with target_type '{target_type}' and specific pipelines: {pipeline}"
+        if "pipeline" in process_strategy and "knowledge_graph" in target_type:
+            pipeline = process_strategy["pipeline"]
+            self.logger.info(
+                f"We have process_strategy, with specific pipelines: {pipeline}"
+            )
+            try:
+                tools = [self.tool_key_mapping[key] for key in pipeline]
+            except KeyError as e:
+                return ToolResult(
+                    success=False,
+                    error_message=f"Invalid tool key {e} in pipeline configuration",
                 )
-                try:
-                    tools = [self.tool_key_mapping[key] for key in pipeline]
-                except KeyError as e:
-                    return ToolResult(
-                        success=False,
-                        error_message=f"Invalid tool key {e} in pipeline configuration",
-                    )
-                return self.execute_custom_pipeline(tools, request_data, execution_id)
-            elif "personal_memory" in target_type:
-                tools = ["MemoryGraphBuildTool"]
-                self.logger.info(
-                    f"We have process_strategy with target_type '{target_type}'. Using tool '{tools}'"
-                )
-                return self.execute_custom_pipeline(tools, request_data, execution_id)
+            return self.execute_custom_pipeline(tools, context, execution_id)
 
         # Default pipeline selection
         topic_name = metadata.get("topic_name")
-        file_count = len(request_data.get("files", []))
-        is_new_topic = request_data.get("is_new_topic", False)
+        file_count = len(context.get("files", []))
+        is_new_topic = context.get("is_new_topic", False)
 
         # Determine input type and context
         input_type = "dialogue" if target_type == "personal_memory" else "document"
-        if isinstance(request_data.get("input"), str) and not request_data.get("files"):
+        if isinstance(context.get("input"), str) and not context.get("files"):
             input_type = "text"
 
         self.logger.info(f"Input type is: {input_type}")
@@ -528,4 +521,4 @@ class PipelineOrchestrator:
 
         self.logger.info(f"Using pipeline name: {pipeline_name}")
 
-        return self.execute_pipeline(pipeline_name, request_data, execution_id)
+        return self.execute_pipeline(pipeline_name, context, execution_id)

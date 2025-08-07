@@ -26,7 +26,7 @@ class ToolsRouteWrapper:
         metadata: Union[str, Dict[str, Any]],
         process_strategy: Optional[Union[str, Dict[str, Any]]] = None,
         target_type: str = "knowledge_graph",
-        links: Optional[Union[str, List[str]]] = None,
+        links: List[str] = [],
         llm_client=None,
         embedding_func=None,
     ) -> ToolResult:
@@ -51,26 +51,17 @@ class ToolsRouteWrapper:
             files_list = files if isinstance(files, list) else [files]
             parsed_metadata = self._parse_metadata(metadata)
             parsed_strategy = self._parse_process_strategy(process_strategy)
-            parsed_links = self._parse_links(links)
-            
-            # 2. Create default LLM and embedding functions
-            if llm_client is None:
-                llm_client = LLMInterface
-            if embedding_func is None:
-                embedding_func = get_text_embedding
-            
+
             # 3. Save files to temporary directory and prepare information
-            prepared_files = self._prepare_files(files_list, parsed_metadata, parsed_links)
-            
+            prepared_files = self._prepare_files(files_list, parsed_metadata, links)
+
             # 4. Construct request_data
             request_data = self._build_request_data(
                 target_type,
                 parsed_metadata,
                 parsed_strategy,
-                llm_client,
-                embedding_func,
             )
-            
+
             # 5. Call tools system
             result = self.api_integration.process_request(
                 request_data=request_data, files=prepared_files
@@ -83,9 +74,6 @@ class ToolsRouteWrapper:
             return ToolResult(
                 success=False, error_message=f"Route wrapper error: {str(e)}", data={}
             )
-        finally:
-            # clean up temp files
-            self._cleanup_temp_files(prepared_files)
 
     def process_json_request(
         self,
@@ -114,29 +102,27 @@ class ToolsRouteWrapper:
             # 1. Analyze parameters
             parsed_metadata = self._parse_metadata(metadata)
             parsed_strategy = self._parse_process_strategy(process_strategy)
-            
+
             # 2. Create default client
             if llm_client is None:
                 llm_client = LLMInterface("openai", model="gpt-4o")
             if embedding_func is None:
                 embedding_func = get_text_embedding
-            
+
             # 3. Construct request_data
             request_data = self._build_request_data(
                 target_type,
                 parsed_metadata,
                 parsed_strategy,
-                llm_client,
-                embedding_func,
             )
-            
+
             # 4. Add input data
             if target_type == "personal_memory":
                 request_data["chat_messages"] = input_data
                 request_data["user_id"] = parsed_metadata.get("user_id")
             else:
                 request_data["input"] = input_data
-            
+
             # 5. Call tools system（without files)
             result = self.api_integration.process_request(
                 request_data=request_data, files=[]
@@ -171,79 +157,31 @@ class ToolsRouteWrapper:
                 raise ValueError(f"Invalid JSON in process_strategy: {e}")
         return process_strategy
 
-    def _parse_links(self, links: Optional[Union[str, List[str]]]) -> List[str]:
-        """Parse links parameter"""
-        if links is None:
-            return []
-        if isinstance(links, str):
-            try:
-                parsed = json.loads(links)
-                if isinstance(parsed, list):
-                    return parsed
-                elif isinstance(parsed, str):
-                    return [parsed]
-                else:
-                    return []
-            except json.JSONDecodeError:
-                # Handle as comma-separated string
-                return [link.strip() for link in links.split(",") if link.strip()]
-        elif isinstance(links, list):
-            return links
-        return []
-
-    def _prepare_files(self, files: List[UploadFile], metadata: Dict[str, Any], links: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    def _prepare_files(
+        self,
+        files: List[UploadFile],
+        metadata: Dict[str, Any],
+        links: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
         """Prepare file information"""
         prepared_files = []
         links = links or []
-        
+
         for i, file in enumerate(files):
-            # save files to temp directories
-            temp_file_path = self.temp_dir / f"{i}_{file.filename}"
-            
-            # read and save file contents
-            file_content = file.file.read()
-            with open(temp_file_path, "wb") as f:
-                f.write(file_content)
-            
-            # reset file pointer if repeated reading is required
-            file.file.seek(0)
-            
             # Resolve link with steps: links param > metadata.links > metadata.link > default
             link = None
-            
+
             # First: use provided links parameter
             if i < len(links):
                 link = links[i]
-            else:
-                # Second: check metadata.links (list or string)
-                metadata_links = metadata.get("links")
-                if isinstance(metadata_links, list) and metadata_links:
-                    link = metadata_links[min(i, len(metadata_links) - 1)]
-                elif isinstance(metadata_links, str) and metadata_links:
-                    link = metadata_links
-                
-                # Third: check metadata.link (single link)
-                if link is None:
-                    metadata_link = metadata.get("link")
-                    if metadata_link:
-                        link = metadata_link if isinstance(metadata_link, str) else metadata_link[0]
-
-                # Fallback: file:// URL
-                if link is None or link == "":
-                    link = f"file://{file.filename}"
-            
             # construct file info
             file_info = {
-                "path": str(temp_file_path),
                 "filename": file.filename,
-                "metadata": {},  # file-specific metadata
+                "metadata": metadata,  # file-specific metadata
                 "link": link,
                 "content_type": file.content_type,
-                "size": len(file_content),
             }
-
             prepared_files.append(file_info)
-
         return prepared_files
 
     def _build_request_data(
@@ -251,29 +189,14 @@ class ToolsRouteWrapper:
         target_type: str,
         metadata: Dict[str, Any],
         process_strategy: Dict[str, Any],
-        llm_client,
-        embedding_func,
     ) -> Dict[str, Any]:
         """Build request data"""
         return {
             "target_type": target_type,
             "metadata": metadata,
             "process_strategy": process_strategy,
-            "llm_client": llm_client,
-            "embedding_func": embedding_func,
             "force_regenerate": metadata.get("force_regenerate", False),
         }
-
-    def _cleanup_temp_files(self, prepared_files: List[Dict[str, Any]]):
-        """Cleanup temporary files"""
-        for file_info in prepared_files:
-            try:
-                temp_path = Path(file_info["path"])
-                if temp_path.exists():
-                    temp_path.unlink()
-            except Exception as e:
-                # Log the event without throwing an exception
-                print(f"Warning: Failed to cleanup temp file {file_info['path']}: {e}")
 
     def __del__(self):
         """Cleanup temporary directory"""

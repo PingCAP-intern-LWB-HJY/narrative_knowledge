@@ -12,6 +12,7 @@ from knowledge_graph.models import RawDataSource
 from setting.db import SessionLocal, db_manager
 
 import asyncio
+import copy
 
 # Functions imported from api.knowledge for reuse
 from api.knowledge import (
@@ -268,11 +269,11 @@ tools_wrapper = ToolsRouteWrapper()
 @router.post("/save", response_model=APIResponse, status_code=status.HTTP_200_OK)
 async def save_data_pipeline(
     request: Request,
-    files: Optional[List[UploadFile]] = Form(None),
+    files: List[UploadFile] = Form(...),
+    links: str = Form(...),
+    target_type: str = Form(...),
     metadata: Optional[str] = Form(None),
-    target_type: Optional[str] = Form(None),
     process_strategy: Optional[str] = Form(None),
-    links: Optional[str] = Form(None),
 ) -> JSONResponse:
     """
     Enhanced save endpoint using tools pipeline system.
@@ -281,56 +282,57 @@ async def save_data_pipeline(
 
     if "multipart/form-data" in content_type:
         # Validate required parameters
-        if not files or len(files) == 0 or not metadata or not target_type:
+        if not files or len(files) == 0 or not links or not target_type:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="For multipart/form-data, 'files', 'metadata', and 'target_type' are required.",
+                detail="For multipart/form-data, 'files', 'links', and 'target_type' are required.",
             )
-        # Verify links and files have the same numbers
-        if links:
-            try:
-                parsed_links = json.loads(links) if isinstance(links, str) else links
-                if isinstance(parsed_links, str):
-                    parsed_links = [parsed_links]
-                if len(parsed_links) != len(files):
-                    return JSONResponse(
-                        status_code=400,
-                        content={
-                            "success": False,
-                            "message": f"Number of links ({len(parsed_links)}) must match number of files ({len(files)})",
-                            "data": {},
-                        },
-                    )
-            except json.JSONDecodeError:
-                # Handle as comma-separated string
-                link_list = [
-                    link.strip() for link in str(links).split(",") if link.strip()
-                ]
-                if len(link_list) != len(files):
-                    return JSONResponse(
-                        status_code=400,
-                        content={
-                            "success": False,
-                            "message": f"Number of links ({len(link_list)}) must match number of files ({len(files)})",
-                            "data": {},
-                        },
-                    )
-        tasks = [
-            _handle_form_data(
-                file,
-                metadata,
-                target_type,
+        # Validate links format
+        try:
+            links_list = json.loads(links)
+            if not isinstance(links_list, list):
+                raise ValueError("links is not a JSON list.")
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid 'links' format. Must be a JSON list of strings. Error: {str(e)}",
             )
-            for file in files
-        ]
+
+        if len(links_list) != len(files):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'links' and 'files' count mismatch: {len(links_list)} links vs {len(files)} files.",
+            )
+            
+        # Parse metadata if provided
+        try:
+            parsed_metadata = json.loads(metadata) if metadata is not None else {}
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid 'metadata' format. Must be a valid JSON object. Error: {str(e)}",
+            )
+            
+        tasks = []
+        for file, link in zip(files, links_list):
+            single_metadata = copy.deepcopy(parsed_metadata)
+            single_metadata["link"] = link
+
+            task = _handle_form_data(
+                file=file,
+                metadata_str=json.dumps(single_metadata),
+                target_type=target_type,
+            )
+            tasks.append(task)
+
         await asyncio.gather(*tasks)
         # Use tools wrapper
         result = tools_wrapper.process_upload_request(
             files=files,
-            metadata=metadata,
+            metadata=metadata if metadata is not None else {},
             process_strategy=process_strategy,
             target_type=target_type,
-            links=links,
+            links=links_list,
         )
         logger.info(f"Processed upload request: {result.to_dict()}")
         # Convert to API response format

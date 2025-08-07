@@ -95,7 +95,7 @@ class SourceData(Base):
 
     # Reference to raw data source
     raw_data_source_id = Column(
-        String(36), ForeignKey("raw_data_sources.id"), nullable=True
+        String(64), ForeignKey("raw_data_sources.id"), nullable=True
     )
     
     # Reference to deduplicated content

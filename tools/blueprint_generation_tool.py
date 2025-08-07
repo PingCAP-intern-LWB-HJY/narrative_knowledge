@@ -15,6 +15,8 @@ from knowledge_graph.models import SourceData, AnalysisBlueprint
 from knowledge_graph.congnitive_map import DocumentCognitiveMapGenerator
 from knowledge_graph.graph import NarrativeKnowledgeGraphBuilder
 from setting.db import SessionLocal
+from llm.factory import LLMInterface
+from llm.embedding import get_text_embedding
 
 
 class BlueprintGenerationTool(BaseTool):
@@ -43,13 +45,13 @@ class BlueprintGenerationTool(BaseTool):
     def __init__(
         self,
         session_factory=None,
-        llm_client=None,
+        llm_client=LLMInterface("openai", "gpt-4o"),
         embedding_func: Optional[Callable] = None,
     ):
         super().__init__(session_factory=session_factory)
         self.session_factory = session_factory or SessionLocal
         self.llm_client = llm_client
-        self.embedding_func = embedding_func
+        self.embedding_func = embedding_func or get_text_embedding
 
         # Initialize components
         self.cm_generator: Optional[DocumentCognitiveMapGenerator] = None
@@ -59,10 +61,7 @@ class BlueprintGenerationTool(BaseTool):
         """Initialize cognitive map generator and graph builder."""
         if not self.llm_client:
             raise ValueError("LLM client is required for blueprint generation")
-        if self.embedding_func is None:
-            raise ValueError(
-                "Embedding function need to be Callable for blueprint generation"
-            )
+
         if not self.cm_generator:
             self.cm_generator = DocumentCognitiveMapGenerator(
                 self.llm_client, self.session_factory, worker_count=3
@@ -203,21 +202,10 @@ class BlueprintGenerationTool(BaseTool):
         try:
             topic_name = input_data["topic_name"]
             source_data_ids = input_data.get("source_data_ids")
+            self.logger.info("source_data_ids: %s", source_data_ids)
             force_regenerate = input_data.get("force_regenerate", False)
 
-            # Get LLM client from input or use provided one
-            llm_client = input_data.get("llm_client", self.llm_client)
-            embedding_func = input_data.get("embedding_func", self.embedding_func)
-
-            if not llm_client:
-                return ToolResult(
-                    success=False,
-                    error_message="LLM client is required for blueprint generation",
-                )
-
             # Initialize components with provided clients
-            self.llm_client = llm_client
-            self.embedding_func = embedding_func
             self._initialize_components()
 
             self.logger.info(f"Starting blueprint generation for topic: {topic_name}")

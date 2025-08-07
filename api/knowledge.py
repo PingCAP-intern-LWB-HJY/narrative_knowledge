@@ -221,7 +221,6 @@ def _save_uploaded_file_with_metadata(
 
                 logger.info(
                     f"Found existing document with build_id: {build_id}, "
-                    f"storage_directory: {existing_build_status.storage_directory}"
                 )
                 return base_dir, build_id
             # If no existing source in database, check file system for existing metadata
@@ -312,6 +311,7 @@ def _create_processing_task(
         )
         file_content = file.file.read()
         file_hash = hashlib.sha256(file_content).hexdigest()
+        file_path = storage_directory / (file.filename or "unknown")
         logger.info(
             f"Creating processing task for {storage_directory} with build_id: {build_id}, "
             f"file_hash: {file_hash}, external_db_uri: {external_db_uri}"
@@ -320,7 +320,7 @@ def _create_processing_task(
             build_status = RawDataSource(
                 topic_name=metadata.topic_name,
                 id=build_id,
-                file_path=str(storage_directory),
+                file_path=str(file_path),
                 file_hash=file_hash,
                 original_filename=file.filename,
                 raw_data_source_metadata=metadata.dict(),

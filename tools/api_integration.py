@@ -45,6 +45,7 @@ class PipelineAPIIntegration:
         Returns:
             ToolResult with processing results
         """
+        # TODO: what is the function of execution_id?
         execution_id = execution_id or str(uuid.uuid4())
 
         # Prepare context for pipeline execution
@@ -135,25 +136,13 @@ class PipelineAPIIntegration:
                 "process_strategy": request_data.get("process_strategy", {}),
                 "metadata": metadata,
                 "files": files,
-                "llm_client": request_data.get("llm_client"),
-                "embedding_func": request_data.get("embedding_func"),
                 "force_regenerate": request_data.get("force_regenerate", False),
                 "topic_name": metadata.get("topic_name"),
-                "link": metadata.get("link"),
                 "database_uri": metadata.get("database_uri"),
                 "is_new_topic": (
                     is_new_topic if target_type == "knowledge_graph" else None
                 ),
             }
-
-            # Handle file-specific parameters if files are provided
-            if files and len(files) == 1:
-                file_info = files[0]
-                context["file_path"] = file_info.get("path")
-                context["original_filename"] = file_info.get("filename")
-                # Handle link from file metadata or request metadata
-                context["link"] = file_info.get("link") or metadata.get("link")
-
         return context
 
     def process_single_file(
