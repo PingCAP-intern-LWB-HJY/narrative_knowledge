@@ -403,8 +403,7 @@ class PipelineOrchestrator:
                 "chat_messages": context.get("chat_messages", []),
                 "user_id": context.get("user_id"),
                 "force_regenerate": context.get("force_regenerate", False),
-                "llm_client": context.get("llm_client"),
-                "embedding_func": context.get("embedding_func"),
+                "source_id": context.get("source_id"),
             }
 
         return context.copy()
@@ -490,19 +489,27 @@ class PipelineOrchestrator:
         metadata = context.get("metadata", {})
 
         # Explicit pipeline execution
-        if "pipeline" in process_strategy and "knowledge_graph" in target_type:
-            pipeline = process_strategy["pipeline"]
-            self.logger.info(
-                f"We have process_strategy, with specific pipelines: {pipeline}"
-            )
-            try:
-                tools = [self.tool_key_mapping[key] for key in pipeline]
-            except KeyError as e:
-                return ToolResult(
-                    success=False,
-                    error_message=f"Invalid tool key {e} in pipeline configuration",
+        if "pipeline" in process_strategy:
+            if "knowledge_graph" in target_type:
+                pipeline = process_strategy["pipeline"]
+                self.logger.info(
+                    f"We have process_strategy, with target_type '{target_type}' and specific pipelines: {pipeline}"
                 )
-            return self.execute_custom_pipeline(tools, context, execution_id)
+                try:
+                    tools = [self.tool_key_mapping[key] for key in pipeline]
+                except KeyError as e:
+                    return ToolResult(
+                        success=False,
+                        error_message=f"Invalid tool key {e} in pipeline configuration",
+                    )
+                return self.execute_custom_pipeline(tools, context, execution_id)
+            elif "personal_memory" in target_type:
+                tools = ["MemoryGraphBuildTool"]
+                # Tell the user we still use MemoryGraphBuildTool even though process_strategy is provided
+                self.logger.info(
+                    f"We have process_strategy with target_type '{target_type}'. Using tool '{tools}'"
+                )
+                return self.execute_custom_pipeline(tools, context, execution_id)
 
         # Default pipeline selection
         topic_name = metadata.get("topic_name")

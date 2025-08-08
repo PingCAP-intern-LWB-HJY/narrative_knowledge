@@ -113,9 +113,9 @@ class PipelineAPIIntegration:
                 "process_strategy": request_data.get("process_strategy", {}),
                 "metadata": metadata,
                 "user_id": metadata.get("user_id") or request_data.get("user_id"),
+                "source_id": metadata.get("source_id"),  # For processing existing data
                 "chat_messages": request_data.get("chat_messages", []),
-                "llm_client": request_data.get("llm_client"),
-                "embedding_func": request_data.get("embedding_func"),
+                "topic_name": request_data.get("topic_name"),
                 "force_regenerate": request_data.get("force_regenerate", False),
             }
 

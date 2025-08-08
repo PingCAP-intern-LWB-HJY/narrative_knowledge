@@ -1,7 +1,10 @@
 """
 Memory API endpoints for personal chat history.
 """
-
+import json
+import hashlib
+import uuid
+from datetime import datetime
 import logging
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, status
@@ -14,6 +17,9 @@ from llm.factory import LLMInterface
 from llm.embedding import get_text_embedding
 from setting.db import db_manager
 from setting.base import LLM_MODEL, LLM_PROVIDER
+from knowledge_graph.models import SourceData, ContentStore
+from tools.route_wrapper import ToolsRouteWrapper
+
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +39,249 @@ class MemoryRetrieveRequest(BaseModel):
     )
     top_k: int = Field(10, description="Number of results to return")
 
+
+def generate_topic_name_for_personal_memory(user_id: str) -> str:
+    """Generate a topic name for the user."""
+    return f"The personal information of {user_id}"
+
+
+async def store_chat_batch(
+    chat_messages: List[Dict[str, Any]],
+    user_id: str,
+) -> Dict[str, Any]:
+    """
+    Store chat batch as SourceData without processing - Phase 1.
+    
+    Args:
+        chat_messages: List of chat messages
+        user_id: User identifier
+        
+    Returns:
+        Dict with storage confirmation including source_id
+    """
+    topic_name = generate_topic_name_for_personal_memory(user_id)
+    
+    logger.info(
+        f"Storing chat batch for user '{user_id}' with topic name: '{topic_name}'; {len(chat_messages)} messages"
+    )
+    
+    # Get the latest timestamp for unique identifier
+    if chat_messages and any(msg.get("date") for msg in chat_messages):
+        latest_timestamp_str = max(
+            msg["date"] for msg in chat_messages if msg.get("date")
+        )
+        batch_timestamp = latest_timestamp_str
+    else:
+        batch_timestamp = datetime.now().isoformat()
+    
+    chat_link = f"memory://{user_id}/chat_batch/{batch_timestamp}"
+    
+    # Prepare attributes
+    attributes = {
+        "user_id": user_id,
+        "topic_name": topic_name,
+        "batch_type": "chat_messages",
+        "message_count": len(chat_messages),
+        "session_id": chat_messages[0].get("session_id", "") if chat_messages else "",
+        "conversation_title": chat_messages[0].get("conversation_title", "") if chat_messages else "",
+        "last_message_date": batch_timestamp,
+        "processing_status": "pending",  # Mark as pending for processing
+    }
+    
+    # Serialize content data
+    content_json = json.dumps(chat_messages, ensure_ascii=False, indent=2)
+    content_hash = hashlib.sha256(content_json.encode("utf-8")).hexdigest()
+    
+    SessionLocal = db_manager.get_session_factory()
+    
+    with SessionLocal() as db:
+        # Check if source data already exists by content hash
+        existing_source = (
+            db.query(SourceData)
+            .filter(SourceData.link == chat_link)
+            .first()
+        )
+        
+        if existing_source:
+            logger.info(
+                f"Chat batch already exists with link: {chat_link}, reusing: {existing_source.id}"
+            )
+            return {
+                "status": "already_exists",
+                "source_id": str(existing_source.id),
+                "message": "Chat batch already stored",
+                "topic_name": topic_name,
+                "user_id": user_id,
+                "message_count": len(chat_messages),
+            }
+        
+        # Check if content already exists
+        content_store = (
+            db.query(ContentStore).filter_by(content_hash=content_hash).first()
+        )
+        
+        if not content_store:
+            content_store = ContentStore(
+                content_hash=content_hash,
+                content=content_json,
+                content_size=len(content_json.encode("utf-8")),
+                content_type="application/json",
+                name=f"chat_batch_{user_id}_{batch_timestamp}",
+                link=chat_link,
+            )
+            db.add(content_store)
+            logger.info(
+                    f"Created new content store entry with hash: {content_hash[:8]}..."
+                )
+        else:
+            logger.info(
+                f"Reusing existing content store entry with hash: {content_hash[:8]}..."
+            )
+        
+        # Create source data
+        source_data = SourceData(
+            name=f"chat_batch_{user_id}_{batch_timestamp}",
+            link=chat_link,
+            topic_name=topic_name,
+            source_type="application/json",
+            content_hash=content_store.content_hash,
+            attributes=attributes,
+        )
+        
+        db.add(source_data)
+        db.commit()
+        db.refresh(source_data)
+        db.refresh(content_store)
+        
+        logger.info(f"Stored chat batch as SourceData: {source_data.id}")
+        
+        return {
+            "status": "uploaded",
+            "source_id": str(source_data.id),
+            "message": "Chat batch stored successfully. Processing will begin shortly.",
+            "topic_name": topic_name,
+            "user_id": user_id,
+            "message_count": len(chat_messages),
+        }
+
+
+# Create wrapper instance at module level
+tools_wrapper = ToolsRouteWrapper()
+
+# Background task tracking - module-level shared dictionary
+background_tasks: Dict[str, Dict[str, Any]] = {}
+
+
+class BackgroundTaskStatus(BaseModel):
+    """Status model for background processing tasks."""
+    task_id: str
+    status: str
+    source_id: str
+    user_id: str
+    message_count: int
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+async def memory_background_processing(
+    chat_messages: List[Dict[str, Any]],
+    user_id: str,
+    source_id: str,
+    topic_name: str,
+    process_strategy: Optional[Dict[str, Any]] = None,
+    target_type: str = "personal_memory",
+    task_id: Optional[str] = None
+) -> None:
+    """
+    Trigger background processing for chat batch after upload.
+    
+    Args:
+        chat_messages: List of chat messages to process
+        user_id: User identifier
+        source_id: SourceData ID for existing data
+        topic_name: Topic name for memory categorization
+        process_strategy: Optional processing configuration
+        target_type: Target processing type
+        task_id: Optional task ID for tracking
+    """
+    task_id = task_id or str(uuid.uuid4())
+    
+    # Initialize task status
+    background_tasks[task_id] = {
+        "task_id": task_id,
+        "status": "processing",
+        "source_id": source_id,
+        "user_id": user_id,
+        "message_count": len(chat_messages),
+        "result": None,
+        "error": None,
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+    }
+
+    try:
+        # Prepare metadata with source_id for tools processing
+        processing_metadata = {
+            "user_id": user_id,
+            "source_id": source_id,
+            "topic_name": topic_name
+        }
+        
+        # Process the existing source data
+        result = tools_wrapper.process_json_request(
+            input_data=chat_messages,
+            metadata=processing_metadata,
+            process_strategy=process_strategy,
+            target_type=target_type,
+        )
+        
+        # Update task status with success
+        background_tasks[task_id].update({
+            "status": "completed",
+            "result": result.to_dict() if hasattr(result, 'to_dict') else result,
+            "updated_at": datetime.now().isoformat()
+        })
+        
+        logger.info(f"Background processing completed: {result.to_dict()}")
+        
+    except Exception as e:
+        # Update task status with error
+        background_tasks[task_id].update({
+            "status": "failed",
+            "error": str(e),
+            "updated_at": datetime.now().isoformat()
+        })
+        logger.error(f"Background processing failed: {e}")
+
+@router.get("/status/{task_id}")
+async def get_background_task_status(task_id: str) -> JSONResponse:
+    """
+    Get status of background processing task.
+    
+    Args:
+        task_id: Background task ID
+        
+    Returns:
+        JSON response with task status and results
+    """
+    if task_id not in background_tasks:
+        raise HTTPException(
+            status_code=status.HTTP_425_TOO_EARLY,
+            detail=f"Task {task_id} is not ready"
+        )
+        
+    task_status = background_tasks[task_id]
+    
+    # Return raw task status directly
+    return JSONResponse(
+        status_code=status.HTTP_200_OK, 
+        content={
+            "status": task_status["status"],
+            "message": f"Task {task_id} status retrieved",
+            "data": task_status
+        }
+    )
 
 def _get_memory_system() -> PersonalMemorySystem:
     """Get initialized PersonalMemorySystem instance."""

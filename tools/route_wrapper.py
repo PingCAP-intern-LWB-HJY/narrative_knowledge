@@ -119,7 +119,9 @@ class ToolsRouteWrapper:
             # 4. Add input data
             if target_type == "personal_memory":
                 request_data["chat_messages"] = input_data
+                request_data["source_id"] = parsed_metadata.get("source_id")
                 request_data["user_id"] = parsed_metadata.get("user_id")
+                request_data["topic_name"] = parsed_metadata.get("topic_name")
             else:
                 request_data["input"] = input_data
 

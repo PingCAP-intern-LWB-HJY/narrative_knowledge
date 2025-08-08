@@ -217,6 +217,79 @@ class PersonalMemorySystem:
             "topic_name": topic_name,
         }
 
+    def process_existing_chat_batch(
+        self,
+        source_id: str,
+        user_id: str,
+        topic_name: str,
+    ) -> Dict[str, Any]:
+        """
+        Process an existing chat batch from SourceData.
+
+        Args:
+            source_id: ID of the existing SourceData
+            user_id: User identifier
+
+        Returns:
+            Dict with processing results
+        """
+
+        logger.info(
+            f"Processing existing chat batch for user '{user_id}' with topic_name '{topic_name}' and source_id: '{source_id}'"
+        )
+
+        # Get existing SourceData
+        with self.SessionLocal() as db:
+            source_data = db.query(SourceData).filter(
+                SourceData.id == source_id,
+                SourceData.topic_name == topic_name
+            ).first()
+
+            if not source_data:
+                raise ValueError(f"SourceData not found for id: {source_id}")
+
+        # Convert SourceData to dict format
+        source_data_dict = {
+            "id": source_data.id,
+            "name": source_data.name,
+            "content": self._get_source_content(source_data),
+            "attributes": source_data.attributes,
+        }
+
+        # Step 2: Create summary knowledge block
+        knowledge_block = self._create_summary_knowledge_block(
+            source_data_dict, user_id, topic_name
+        )
+
+        # Step 3: create personal blueprint
+        self.create_personal_blueprint(user_id, topic_name)
+
+        # Step 4: Create GraphBuild record for background processing
+        build_id = self._create_graph_build_task(
+            source_data_dict, user_id, topic_name
+        )
+
+        return {
+            "status": "success",
+            "source_id": source_data.id,
+            "knowledge_block_id": knowledge_block["id"],
+            "build_id": build_id,
+            "summary": knowledge_block["content"],
+            "topic_name": topic_name,
+        }
+
+    def _get_source_content(self, source_data: SourceData) -> str:
+        """Get content from SourceData."""
+        with self.SessionLocal() as db:
+            content_store = db.query(ContentStore).filter(
+                ContentStore.content_hash == source_data.content_hash
+            ).first()
+            
+            if content_store:
+                return content_store.content
+            else:
+                logger.info("Content_store not found")
+
     def _store_chat_batch_as_source(
         self, chat_messages: List[Dict], user_id: str, topic_name: str
     ) -> SourceData:

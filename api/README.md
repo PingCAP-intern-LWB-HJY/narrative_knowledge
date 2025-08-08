@@ -255,6 +255,7 @@ Enhanced endpoint for saving and processing data using the tools pipeline system
   - Example: `{"pipeline": ["etl", "blueprint_gen", "graph_build"]}`
 
 **Examples using curl:**
+
 Single File Uploading:
 
 ```bash
@@ -295,6 +296,7 @@ curl -X POST "http://localhost:8000/api/v1/save" \
   - Example: `{"pipeline": ["etl", "blueprint_gen", "graph_build"]}`
 
 **Examples using curl:**
+
 Single File uploading:
 
 ```bash
@@ -487,6 +489,15 @@ curl -X POST "http://localhost:8000/api/v1/save" \
 
 ### For JSON Input (`application/json`):
 
+**GET** `/api/v1/memory/status/`
+
+Get the status of a background memory processing task.
+
+**Example using curl (chat history):**
+
+curl "http://localhost:8000/api/v1/memory/status/{task_id}"
+
+
 **Parameters:**
 - `input`: The raw data to process - can be chat history array or any JSON data (required)
 - `metadata`: JSON object with processing context (required)
@@ -506,11 +517,13 @@ curl -X POST "http://localhost:8000/api/v1/save" \
     "input": [
       {
         "role": "user", 
-        "content": "How do I set up SSH keys for GitHub?"
+        "content": "How do I set up SSH keys for GitHub?",
+	"date": "2025-08-07T16:18:04.282415"
       },
       {
         "role": "assistant", 
-        "content": "To set up SSH keys for GitHub..."
+        "content": "To set up SSH keys for GitHub...",
+	"date": "2025-08-04T16:18:13.282415"
       }
     ],
     "metadata": {
@@ -550,39 +563,76 @@ curl -X POST "http://localhost:8000/api/v1/save" \
 ```
 
 **Response (For memory processing):**
+
+- Successfully uploaded:
+
 ```json
 {
   "success": true,
-  "message": "Processing completed successfully",
+  "message": "Chat batch uploaded successfully. Background processing has started.",
   "data": {
-    "results": {
-      "MemoryGraphBuildTool": { 
-        "success": true,
-        "data": {
-          "user_id": "user123",
-          "topic_name": "The personal information of user123",
-          "source_data_id": "6f719586-a5d5-4fa3-9747-32af7ebc48b6",
-          "knowledge_block_id": "5245b45e-5784-4f97-9761-8d55d91521b7",
-          "entities_created": 0,
-          "relationships_created": 1,
-          "triplets_extracted": 1,
-          "status": "completed"
-        },
-        "error_message": null,
-        "metadata": {
-          "user_id": "user123",
-          "message_count": 2,
-          "topic_name": "The personal information of user123"
-        },
-        "execution_id": "dea4dcb1-9325-492e-8dec-d9afd9a0046d_MemoryGraphBuildTool",
-        "duration_seconds": 32.593251,
-        "timestamp": "2025-08-01T22:55:24.658312+00:00"
-      }
-    },
-    "pipeline": ["MemoryGraphBuildTool"],
-    "duration_seconds": 32.593757
+    "status": "uploaded",
+    "source_id": "d390065f-4582-4a8e-b70e-b78269138617",
+    "user_id": "user123",
+    "message_count": 2,
+    "topic_name": "The personal information of user123",
+    "phase": "stored",
+    "task_id": "6f87959b-20df-4ed5-9909-ec5df4287c5c"
   },
-  "execution_id": "dea4dcb1-9325-492e-8dec-d9afd9a0046d"
+  "execution_id": "upload_d390065f-4582-4a8e-b70e-b78269138617"}
+```
+
+- Results after using `/api/v1/memory/status/`:
+
+```json
+{
+  "status": "completed",
+  "message": "Task 6f87959b-20df-4ed5-9909-ec5df4287c5c status retrieved",
+  "data": {
+    "task_id": "6f87959b-20df-4ed5-9909-ec5df4287c5c",
+    "status": "completed",
+    "source_id": "d390065f-4582-4a8e-b70e-b78269138617",
+    "user_id": "user123",
+    "message_count": 2,
+    "result": {
+      "success": true,
+      "data": {
+        "results": {
+          "MemoryGraphBuildTool": {
+            "success": true,
+            "data": {
+              "user_id": "user123",
+              "topic_name": "The personal information of user123",
+              "source_data_id": "d390065f-4582-4a8e-b70e-b78269138617",
+              "knowledge_block_id": "b115f896-e9f2-4067-b8b2-8e6dd7f9a6e0",
+              "entities_created": 0,
+              "relationships_created": 1,
+              "triplets_extracted": 1,
+              "status": "completed"
+            },
+            "error_message": null,
+            "metadata": {
+              "user_id": "user123",
+              "message_count": "from_source",
+              "topic_name": "The personal information of user123"},
+              "execution_id": "9a830d6d-83fa-48c2-a07c-7cd8076dc748_MemoryGraphBuildTool",
+              "duration_seconds": 29.992678,
+              "timestamp": "2025-08-08T00:01:12.223864+00:00"
+          }
+        },
+        "pipeline": ["MemoryGraphBuildTool"],
+        "duration_seconds": 29.993713
+      },
+      "error_message": null,
+      "metadata": {},
+      "execution_id": "9a830d6d-83fa-48c2-a07c-7cd8076dc748",
+      "duration_seconds": 29.993713,
+      "timestamp": "2025-08-08T00:01:12.225192+00:00"
+    },
+    "error": null,
+    "created_at": "2025-08-07T17:00:42.197844",
+    "updated_at": "2025-08-07T17:01:12.230113"
+  }
 }
 ```
 

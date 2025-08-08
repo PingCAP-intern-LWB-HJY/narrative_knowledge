@@ -45,7 +45,7 @@ class GraphBuildTool(BaseTool):
         self,
         session_factory=None,
         llm_client=LLMInterface("openai", model="gpt-4o"),
-        embedding_func=text_based_mock_embedding,
+        embedding_func=text_based_mock_embedding or get_text_embedding,
         worker_count: int = 3,
     ):
         super().__init__(session_factory=session_factory)

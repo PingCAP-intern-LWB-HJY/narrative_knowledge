@@ -8,11 +8,13 @@ from fastapi.responses import JSONResponse
 
 from api.models import APIResponse, DocumentMetadata, ProcessedDocument
 from api.memory import _get_memory_system
+from api.memory import store_chat_batch, memory_background_processing
 from knowledge_graph.models import RawDataSource
 from setting.db import SessionLocal, db_manager
 
 import asyncio
 import copy
+import uuid
 
 # Functions imported from api.knowledge for reuse
 from api.knowledge import (
@@ -269,9 +271,9 @@ tools_wrapper = ToolsRouteWrapper()
 @router.post("/save", response_model=APIResponse, status_code=status.HTTP_200_OK)
 async def save_data_pipeline(
     request: Request,
-    files: List[UploadFile] = Form(...),
-    links: str = Form(...),
-    target_type: str = Form(...),
+    files: Optional[List[UploadFile]] = Form(None),
+    links: Optional[str] = Form(None),
+    target_type: Optional[str] = Form(None),
     metadata: Optional[str] = Form(None),
     process_strategy: Optional[str] = Form(None),
 ) -> JSONResponse:
@@ -342,38 +344,98 @@ async def save_data_pipeline(
             return JSONResponse(status_code=500, content=result.to_dict())
 
     elif "application/json" in content_type:
-        # JSON data processing
+        # JSON data processing - Two-phase approach for personal_memory
         body = await request.json()
-
-        result = tools_wrapper.process_json_request(
-            input_data=body.get("input"),
-            metadata=body.get("metadata", {}),
-            process_strategy=body.get("process_strategy"),
-            target_type=body.get("target_type", "personal_memory"),
-        )
-
-        # Convert ToolResult to dict for JSON serialization
-        result_dict = result.to_dict()
-
-        if result.success:
+        target_type = body.get("target_type", "personal_memory")
+        
+        if target_type == "personal_memory":
+            # Phase 1: Store chat batch immediately and return "uploaded" feedback
+            chat_messages = body.get("input", [])
+            metadata = body.get("metadata", {})
+            user_id = metadata.get("user_id", "")
+            
+            if not user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="`user_id` is required in metadata for target_type 'personal_memory'.",
+                )
+            
+            if not isinstance(chat_messages, list):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Input data for personal memory must be a list of chat messages.",
+                )
+            
+            # Store chat batch
+            store_result = await store_chat_batch(chat_messages, user_id)
+            source_id = store_result["source_id"]
+            
+            # Generate task ID for background processing tracking
+            task_id = str(uuid.uuid4())
+            
+            # Start background processing without waiting
+            asyncio.create_task(
+                memory_background_processing(
+                    chat_messages=chat_messages,
+                    user_id=user_id,
+                    source_id=source_id,
+                    topic_name=store_result["topic_name"],
+                    process_strategy=body.get("process_strategy"),
+                    target_type=target_type,
+                    task_id=task_id,
+                )
+            )
+            
+            # Return confirmation with task ID
             return JSONResponse(
                 status_code=200,
                 content={
                     "success": True,
-                    "message": "Processing completed successfully",
-                    "data": result_dict["data"],
-                    "execution_id": result_dict["execution_id"],
+                    "message": "Chat batch uploaded successfully. Background processing has started.",
+                    "data": {
+                        "status": "uploaded",
+                        "source_id": source_id,
+                        "user_id": user_id,
+                        "message_count": len(chat_messages),
+                        "topic_name": store_result["topic_name"],
+                        "phase": "stored",
+                        "task_id": task_id
+                    },
+                    "execution_id": f"upload_{source_id}",
                 },
             )
+        
         else:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "success": False,
-                    "message": result_dict["error_message"],
-                    "execution_id": result_dict["execution_id"],
-                },
+            # For non-personal_memory target types, use original processing
+            result = tools_wrapper.process_json_request(
+                input_data=body.get("input"),
+                metadata=body.get("metadata", {}),
+                process_strategy=body.get("process_strategy", {}),
+                target_type=target_type or "personal_memory",
             )
+
+            # Convert ToolResult to dict for JSON serialization
+            result_dict = result.to_dict()
+
+            if result.success:
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "success": True,
+                        "message": "Processing completed successfully",
+                        "data": result_dict["data"],
+                        "execution_id": result_dict["execution_id"],
+                    },
+                )
+            else:
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "success": False,
+                        "message": result_dict["error_message"],
+                        "execution_id": result_dict["execution_id"],
+                    },
+                )
     else:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,

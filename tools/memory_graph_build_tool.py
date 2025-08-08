@@ -13,6 +13,7 @@ from tools.graph_build_tool import GraphBuildTool
 from memory_system import PersonalMemorySystem, generate_topic_name_for_personal_memory
 from knowledge_graph.models import SourceData, AnalysisBlueprint
 from llm.factory import LLMInterface
+from llm.embedding import get_text_embedding, text_based_mock_embedding
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +27,16 @@ class MemoryGraphBuildTool(GraphBuildTool):
     tool-based processing.
     """
 
-    def __init__(self, session_factory=None, llm_client=None, embedding_func=None):
-        super().__init__(session_factory, llm_client, embedding_func)
+    def __init__(
+        self, 
+        session_factory=None, 
+        llm_client=LLMInterface("openai", model="gpt-4o"),
+        embedding_func=text_based_mock_embedding or get_text_embedding,
+    ):
+        super().__init__(session_factory)
         self.memory_system = None
+        self.llm_client = llm_client
+        self.embedding_func = embedding_func
 
     @property
     def tool_name(self) -> str:
@@ -79,6 +87,10 @@ class MemoryGraphBuildTool(GraphBuildTool):
                     },
                     "description": "List of chat messages to process",
                 },
+                "source_id": {
+                    "type": "string",
+                    "description": "ID of created SourceData from api/memory",
+                },
                 "user_id": {
                     "type": "string",
                     "description": "User identifier for memory categorization",
@@ -88,14 +100,7 @@ class MemoryGraphBuildTool(GraphBuildTool):
                     "description": "Force regeneration even if already processed",
                     "default": False,
                 },
-                "llm_client": {
-                    "type": "object",
-                    "description": "LLM client instance for processing",
-                },
-                "embedding_func": {
-                    "type": "object",
-                    "description": "Embedding function for vector operations",
-                },
+
             },
         }
 
@@ -179,7 +184,8 @@ class MemoryGraphBuildTool(GraphBuildTool):
 
         Args:
             input_data: Dictionary containing:
-                - chat_messages: List of chat message dicts
+                - chat_messages: List of chat message dicts (for new processing)
+                - source_id: ID of existing SourceData (for processing stored data)
                 - user_id: User identifier
                 - force_reprocess: Whether to force reprocessing
                 - llm_client: LLM client instance
@@ -189,6 +195,7 @@ class MemoryGraphBuildTool(GraphBuildTool):
             ToolResult with memory processing results
         """
         try:
+            source_id = input_data.get("source_id")
             chat_messages = input_data.get("chat_messages", [])
             user_id = input_data.get("user_id")
             force_regenerate = input_data.get("force_regenerate", False)
@@ -200,53 +207,50 @@ class MemoryGraphBuildTool(GraphBuildTool):
 
             if not user_id:
                 return ToolResult(success=False, error_message="user_id is required")
-
-            # Get LLM client from input or use provided one
-            llm_client = input_data.get(
-                "llm_client", LLMInterface("openai", model="gpt-4o")
-            )
-            if not llm_client:
-                return ToolResult(
-                    success=False,
-                    error_message="LLM client is required for graph building",
-                )
-            embedding_func = input_data.get("embedding_func", self.embedding_func)
-
-            # Initialize components with provided clients
-            self.llm_client = llm_client
-            self.logger.info("successfully initialized LLM client")
-            self.embedding_func = embedding_func
+            
             self._initialize_components()
 
             # Initialize memory system
             memory_system = PersonalMemorySystem(
-                llm_client=llm_client,
-                embedding_func=embedding_func,
+                llm_client=self.llm_client,
+                embedding_func=self.embedding_func,
                 session_factory=self.session_factory,
             )
 
             # Generate topic name for this user
-            topic_name = generate_topic_name_for_personal_memory(user_id)
+            topic_name = input_data.get("topic_name", generate_topic_name_for_personal_memory(user_id))
 
-            # Check if this exact batch was already processed
-            if not force_regenerate:
-                existing_result = self._check_existing_processing(
-                    chat_messages, user_id
-                )
-                if existing_result:
-                    return existing_result
+            # Handle both source_id-based processing and legacy chat_messages processing
+            if source_id:
+                # Process existing SourceData
+                memory_result = memory_system.process_existing_chat_batch(source_id, user_id, topic_name)
+                source_data_id = source_id
+            else:
+                self.logger.info("No source_id provided, use default process")
+                # Legacy processing for new chat messages
+                if not chat_messages:
+                    return ToolResult(
+                        success=False, error_message="No chat messages provided"
+                    )
 
-            # Process through memory system (creates SourceData, Blueprint, KnowledgeBlock)
-            memory_result = memory_system.process_chat_batch(chat_messages, user_id)
+                # Check if this exact batch was already processed
+                if not force_regenerate:
+                    existing_result = self._check_existing_processing(
+                        chat_messages, user_id
+                    )
+                    if existing_result:
+                        return existing_result
 
-            if not memory_result or "source_id" not in memory_result:
-                return ToolResult(
-                    success=False,
-                    error_message="Memory system failed to process chat messages",
-                )
+                # Process through memory system (creates SourceData, Blueprint, KnowledgeBlock)
+                memory_result = memory_system.process_chat_batch(chat_messages, user_id)
 
-            # Now process the created SourceData through graph building
-            source_data_id = memory_result["source_id"]
+                if not memory_result or "source_id" not in memory_result:
+                    return ToolResult(
+                        success=False,
+                        error_message="Memory system failed to process chat messages",
+                    )
+
+                source_data_id = memory_result["source_id"]
 
             # Get the personal blueprint created by memory system
             with self.session_factory() as db:
@@ -292,7 +296,7 @@ class MemoryGraphBuildTool(GraphBuildTool):
                 data=final_result,
                 metadata={
                     "user_id": user_id,
-                    "message_count": len(chat_messages),
+                    "message_count": len(chat_messages) if not source_id else "from_source",
                     "topic_name": topic_name,
                 },
             )
