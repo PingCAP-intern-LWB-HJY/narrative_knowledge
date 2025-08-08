@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request, HTTPException, status, UploadFile, Form
 from fastapi.responses import JSONResponse
 
 from api.models import APIResponse, DocumentMetadata, ProcessedDocument
-from api.memory import _get_memory_system
+from api.memory import _get_memory_system, register_background_task
 from api.memory import store_chat_batch, memory_background_processing
 from knowledge_graph.models import RawDataSource
 from setting.db import SessionLocal, db_manager
@@ -92,7 +92,7 @@ async def _process_file_for_knowledge_graph(
 
     response = APIResponse(
         status="success",
-        message=f"Successfully processed file for knowledge graph. Status: {status_msg}",
+        message=f"Successfully processed file {file.filename} for knowledge graph. Status: {status_msg}",
         data=processed_doc.dict(),
     )
     return JSONResponse(status_code=status.HTTP_200_OK, content=response.dict())
@@ -284,28 +284,12 @@ async def save_data_pipeline(
 
     if "multipart/form-data" in content_type:
         # Validate required parameters
-        if not files or len(files) == 0 or not links or not target_type:
+        if not files or len(files) == 0 or not target_type:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="For multipart/form-data, 'files', 'links', and 'target_type' are required.",
+                detail="For multipart/form-data, 'files' and 'target_type' are required.",
             )
-        # Validate links format
-        try:
-            links_list = json.loads(links)
-            if not isinstance(links_list, list):
-                raise ValueError("links is not a JSON list.")
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid 'links' format. Must be a JSON list of strings. Error: {str(e)}",
-            )
-
-        if len(links_list) != len(files):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"'links' and 'files' count mismatch: {len(links_list)} links vs {len(files)} files.",
-            )
-            
+        
         # Parse metadata if provided
         try:
             parsed_metadata = json.loads(metadata) if metadata is not None else {}
@@ -314,6 +298,32 @@ async def save_data_pipeline(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid 'metadata' format. Must be a valid JSON object. Error: {str(e)}",
             )
+        
+        # Validate links format - either from 'links' or metadata.links, or default
+        meta_links = parsed_metadata.get("links")
+        all_links = links or meta_links
+        if all_links:
+            try:
+                if isinstance(all_links, str):
+                    links_list = json.loads(all_links)
+                else:
+                    links_list = all_links
+                if not isinstance(links_list, list):
+                    raise ValueError("'links' is not a JSON list.")
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid 'links' format. Must be a JSON list of strings. Error: {str(e)}",
+                )
+
+            if len(links_list) != len(files):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"'links' and 'files' count mismatch: {len(links_list)} links vs {len(files)} files.",
+                )
+        else:
+            links_list = [f"file://links/{file.filename}" for file in files]
+        
             
         tasks = []
         for file, link in zip(files, links_list):
@@ -344,12 +354,12 @@ async def save_data_pipeline(
             return JSONResponse(status_code=500, content=result.to_dict())
 
     elif "application/json" in content_type:
-        # JSON data processing - Two-phase approach for personal_memory
+        # JSON data processing
         body = await request.json()
         target_type = body.get("target_type", "personal_memory")
         
         if target_type == "personal_memory":
-            # Phase 1: Store chat batch immediately and return "uploaded" feedback
+            # Store chat batch and return "uploaded" feedback
             chat_messages = body.get("input", [])
             metadata = body.get("metadata", {})
             user_id = metadata.get("user_id", "")
@@ -369,9 +379,12 @@ async def save_data_pipeline(
             # Store chat batch
             store_result = await store_chat_batch(chat_messages, user_id)
             source_id = store_result["source_id"]
-            
+            topic_name = store_result["topic_name"]
             # Generate task ID for background processing tracking
             task_id = str(uuid.uuid4())
+            
+            # Register the task
+            register_background_task(task_id, source_id, user_id, topic_name, len(chat_messages))
             
             # Start background processing without waiting
             asyncio.create_task(
@@ -379,7 +392,7 @@ async def save_data_pipeline(
                     chat_messages=chat_messages,
                     user_id=user_id,
                     source_id=source_id,
-                    topic_name=store_result["topic_name"],
+                    topic_name=topic_name,
                     process_strategy=body.get("process_strategy"),
                     target_type=target_type,
                     task_id=task_id,

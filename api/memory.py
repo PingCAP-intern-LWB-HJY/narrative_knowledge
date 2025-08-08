@@ -15,9 +15,9 @@ from memory_system import PersonalMemorySystem
 from api.models import APIResponse
 from llm.factory import LLMInterface
 from llm.embedding import get_text_embedding
-from setting.db import db_manager
+from setting.db import db_manager, SessionLocal
 from setting.base import LLM_MODEL, LLM_PROVIDER
-from knowledge_graph.models import SourceData, ContentStore
+from knowledge_graph.models import SourceData, ContentStore, BackgroundTask
 from tools.route_wrapper import ToolsRouteWrapper
 
 
@@ -168,21 +168,23 @@ async def store_chat_batch(
 # Create wrapper instance at module level
 tools_wrapper = ToolsRouteWrapper()
 
-# Background task tracking - module-level shared dictionary
-background_tasks: Dict[str, Dict[str, Any]] = {}
+# Use database-based task tracking for persistence across workers
 
 
-class BackgroundTaskStatus(BaseModel):
-    """Status model for background processing tasks."""
-    task_id: str
-    status: str
-    source_id: str
-    user_id: str
-    message_count: int
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+def register_background_task(task_id: str, source_id: str, user_id: str, topic_name:str, message_count: int) -> None:
+    """Register a new background task immediately."""
+    with SessionLocal() as db:
+        task = BackgroundTask(
+            id=task_id,
+            task_type="memory_processing",
+            source_id=source_id,
+            user_id=user_id,
+            topic_name=topic_name,
+            message_count=message_count,
+            status="processing"
+        )
+        db.add(task)
+        db.commit()
 
 async def memory_background_processing(
     chat_messages: List[Dict[str, Any]],
@@ -206,20 +208,8 @@ async def memory_background_processing(
         task_id: Optional task ID for tracking
     """
     task_id = task_id or str(uuid.uuid4())
+    SessionLocal = db_manager.get_session_factory()
     
-    # Initialize task status
-    background_tasks[task_id] = {
-        "task_id": task_id,
-        "status": "processing",
-        "source_id": source_id,
-        "user_id": user_id,
-        "message_count": len(chat_messages),
-        "result": None,
-        "error": None,
-        "created_at": datetime.now().isoformat(),
-        "updated_at": datetime.now().isoformat(),
-    }
-
     try:
         # Prepare metadata with source_id for tools processing
         processing_metadata = {
@@ -237,21 +227,23 @@ async def memory_background_processing(
         )
         
         # Update task status with success
-        background_tasks[task_id].update({
-            "status": "completed",
-            "result": result.to_dict() if hasattr(result, 'to_dict') else result,
-            "updated_at": datetime.now().isoformat()
-        })
+        with SessionLocal() as db:
+            task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
+            if task:
+                task.status = "completed"
+                task.result = result.to_dict() if hasattr(result, 'to_dict') else result
+                db.commit()
         
         logger.info(f"Background processing completed: {result.to_dict()}")
         
     except Exception as e:
         # Update task status with error
-        background_tasks[task_id].update({
-            "status": "failed",
-            "error": str(e),
-            "updated_at": datetime.now().isoformat()
-        })
+        with SessionLocal() as db:
+            task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
+            if task:
+                task.status = "failed"
+                task.error = str(e)
+                db.commit()
         logger.error(f"Background processing failed: {e}")
 
 @router.get("/status/{task_id}")
@@ -265,23 +257,26 @@ async def get_background_task_status(task_id: str) -> JSONResponse:
     Returns:
         JSON response with task status and results
     """
-    if task_id not in background_tasks:
-        raise HTTPException(
-            status_code=status.HTTP_425_TOO_EARLY,
-            detail=f"Task {task_id} is not ready"
-        )
-        
-    task_status = background_tasks[task_id]
+    SessionLocal = db_manager.get_session_factory()
     
-    # Return raw task status directly
-    return JSONResponse(
-        status_code=status.HTTP_200_OK, 
-        content={
-            "status": task_status["status"],
-            "message": f"Task {task_id} status retrieved",
-            "data": task_status
-        }
-    )
+    with SessionLocal() as db:
+        task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
+        
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task {task_id} not found"
+            )
+        
+        # Return task status from database
+        return JSONResponse(
+            status_code=status.HTTP_200_OK, 
+            content={
+                "status": task.status,
+                "message": f"Task {task_id} status retrieved",
+                "data": task.to_dict()
+            }
+        )
 
 def _get_memory_system() -> PersonalMemorySystem:
     """Get initialized PersonalMemorySystem instance."""

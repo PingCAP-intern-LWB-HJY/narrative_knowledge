@@ -7,7 +7,7 @@ import json
 import uuid
 import hashlib
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 from setting.db import SessionLocal, db_manager
 from sqlalchemy import or_, and_, func, case
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
@@ -788,3 +788,78 @@ async def list_topics(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve topics",
         )
+
+# NOT IMPLEMENTED YET
+def register_file_background_task(task_id: str, build_id: str, topic_name: str, filename: str) -> None:
+    """Register a new background task for file processing immediately."""
+    SessionLocal = db_manager.get_session_factory()
+    with SessionLocal() as db:
+        from knowledge_graph.models import BackgroundTask
+        task = BackgroundTask(
+            id=task_id,
+            task_type="file_uploading",
+            source_id=build_id,
+            topic_name=topic_name,
+            status="processing"
+        )
+        db.add(task)
+        db.commit()
+
+# NOT IMPLEMENTED YET
+async def file_background_processing(
+    files: List[UploadFile],
+    metadata: str,
+    links_list: List[str] = [],
+    process_strategy: Optional[Dict[str, Any]] = None,
+    target_type: str = "knowledge_graph",
+    task_id: Optional[str] = None
+) -> None:
+    """
+    Trigger background processing for uploaded file after upload.
+    
+    Args:
+        files: Files to be uploaded
+        metadata: Request metadata
+        build_id: Unique identifier for the document
+        topic_name: Topic name for categorization
+        target_type: Target processing type
+        task_id: Optional task ID for tracking
+    """
+    task_id = task_id or str(uuid.uuid4())
+    SessionLocal = db_manager.get_session_factory()
+    
+    try:
+        from tools.route_wrapper import ToolsRouteWrapper
+        
+        tools_wrapper = ToolsRouteWrapper()
+        
+        # Process the file
+        result = tools_wrapper.process_upload_request(
+            files=files,
+            metadata=metadata if metadata is not None else {},
+            process_strategy=process_strategy,
+            target_type=target_type,
+            links=links_list,
+        )
+        
+        # Update task status with success
+        with SessionLocal() as db:
+            from knowledge_graph.models import BackgroundTask
+            task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
+            if task:
+                task.status = "completed"
+                task.result = result.to_dict() if hasattr(result, 'to_dict') else result
+                db.commit()
+        
+        logger.info(f"File background processing completed: {result.to_dict()}")
+        
+    except Exception as e:
+        # Update task status with error
+        with SessionLocal() as db:
+            from knowledge_graph.models import BackgroundTask
+            task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
+            if task:
+                task.status = "failed"
+                task.error = str(e)
+                db.commit()
+        logger.error(f"File background processing failed: {e}")

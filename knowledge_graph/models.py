@@ -455,3 +455,51 @@ class GraphBuild(Base):
 
     def __repr__(self):
         return f"<GraphBuild(topic={self.topic_name}, source={self.build_id}, status={self.status})>"
+
+
+class BackgroundTask(Base):
+    """Background task tracking for async processing across workers"""
+
+    __tablename__ = "background_tasks"
+
+    id = Column(String(36), primary_key=True, nullable=False)
+    task_type = Column(String(50), nullable=False)  # 'memory_processing', 'graph_build'
+    source_id = Column(String(36), nullable=False)  # Related source_data ID or build ID
+    user_id = Column(String(255), nullable=True)
+    topic_name = Column(String(255), nullable=True)
+    status = Column(
+        Enum("processing", "completed", "failed"),
+        nullable=False,
+        default="processing",
+    )
+    message_count = Column(BigInteger, nullable=True)
+    result = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=func.current_timestamp())
+    updated_at = Column(
+        DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+
+    __table_args__ = (
+        Index("idx_background_tasks_source", "source_id"),
+        Index("idx_background_tasks_user", "user_id"),
+        Index("idx_background_tasks_status", "status"),
+        Index("idx_background_tasks_created", "created_at"),
+        Index("idx_background_tasks_type_status", "task_type", "status"),
+    )
+
+    def __repr__(self):
+        return f"<BackgroundTask(id={self.id}, type={self.task_type}, status={self.status})>"
+
+    def to_dict(self):
+        return {
+            "task_id": self.id,
+            "status": self.status,
+            "source_id": self.source_id,
+            "user_id": self.user_id,
+            "message_count": self.message_count,
+            "result": self.result,
+            "error": self.error,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }

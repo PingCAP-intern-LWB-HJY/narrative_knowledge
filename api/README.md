@@ -241,10 +241,10 @@ Enhanced endpoint for saving and processing data using the tools pipeline system
 
 ### For File Uploads (`multipart/form-data`):
 
-#### Method 1: Separate `links` Parameter (single string or array)
+#### Method 1: Separate `links` Parameter
 **Parameters:**
 - `files`: Single/Batch file(s) to be uploaded (required)
-- `links`: Original document link (optional, must match the number of files, single string or array)
+- `links`: [List] Original document link (optional, must match the number of files)
 - `metadata`: JSON string containing processing metadata (required)
   - `topic_name`: Topic name for knowledge graph building (required)
   - `force_regenerate`: [Boolean] Whether to force regeneration if data already been processed (optional)
@@ -261,7 +261,7 @@ Single File Uploading:
 ```bash
 curl -X POST "http://localhost:8000/api/v1/save" \
   -F "files=@pipeline_design.md" \
-  -F 'links="https://docs.com/doc1"' \
+  -F 'links=["https://docs.com/doc1"]' \
   -F 'metadata={"topic_name":"single0","force_regenerate":"True"}' \
   -F "target_type=knowledge_graph" \
   -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
@@ -274,20 +274,20 @@ curl -X POST "http://localhost:8000/api/v1/save" \
   -F "files=@pipeline_design.md" \
   -F "files=@SmartSave_api_v1.md" \
   -F "files=@knowledge_graph_quality_standard.md" \
-  -F 'links=["https://docs.com/doc1", "https://docs.com/doc2", "https://test.com/files"]' \
+  -F 'links=["https://docs.com/batch1", "https://docs.com/batch2", "https://test.com/files3"]' \
   -F 'metadata={"topic_name":"batch_t1","force_regenerate":"False"}' \
   -F "target_type=knowledge_graph" \
   -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
 ```
 
 #### Alternative Method to include `links`
-##### Include `links` directly in metadata (single string or array)
+##### Include `links` directly in metadata
 
 **Parameters:**
 - `files`: Single/Batch files to be uploaded (required)
 - `metadata`: JSON string containing processing metadata (required)
   - `topic_name`: Topic name for knowledge graph building (required)
-  - `links`: Original document links (optional, single string or array)
+  - `links`: [List] Original document links (optional, must match the number of files)
   - `force_regenerate`: [Boolean] Force regeneration if data already been processed (optional)
   - Additional custom metadata fields
 - `target_type`: Processing target type (required, e.g., "knowledge_graph")
@@ -302,7 +302,7 @@ Single File uploading:
 ```bash
 curl -X POST "http://localhost:8000/api/v1/save" \
   -F "files=@pipeline_design.md" \
-  -F 'metadata={"topic_name":"single0","links":"https://example.com/doc"}' \
+  -F 'metadata={"topic_name":"single0","links":["https://example.com/docs1"]}' \
   -F "target_type=knowledge_graph" \
   -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
 ```
@@ -314,7 +314,7 @@ curl -X POST "http://localhost:8000/api/v1/save" \
   -F "files=@pipeline_design.md" \
   -F "files=@SmartSave_api_v1.md" \
   -F "files=@knowledge_graph_quality_standard.md" \
-  -F 'metadata={"topic_name":"batch_t1","links":["https://example.com/doc","https://docs.com/doc2", "https://test.com/files"]}' \
+  -F 'metadata={"topic_name":"batch_t1","links":["https://example.com/doct1","https://docs.com/doct2", "https://test.com/filest3"]}' \
   -F "target_type=knowledge_graph" \
   -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
 ```
@@ -495,8 +495,9 @@ Get the status of a background memory processing task.
 
 **Example using curl (chat history):**
 
+```bash
 curl "http://localhost:8000/api/v1/memory/status/{task_id}"
-
+```
 
 **Parameters:**
 - `input`: The raw data to process - can be chat history array or any JSON data (required)
@@ -518,12 +519,12 @@ curl -X POST "http://localhost:8000/api/v1/save" \
       {
         "role": "user", 
         "content": "How do I set up SSH keys for GitHub?",
-	"date": "2025-08-07T16:18:04.282415"
+	      "date": "2025-08-07T16:18:04.282415"
       },
       {
         "role": "assistant", 
         "content": "To set up SSH keys for GitHub...",
-	"date": "2025-08-04T16:18:13.282415"
+	      "date": "2025-08-04T16:18:13.282415"
       }
     ],
     "metadata": {
