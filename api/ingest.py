@@ -77,6 +77,9 @@ async def _process_file_for_knowledge_graph(
 
     if is_existing:
         status_msg = "already_exists"
+        logger.info(
+            f"File {file.filename} for topic {topic_name} already exists in the database."
+        )
     else:
         _create_processing_task(file, storage_directory, file_metadata, build_id)
         status_msg = "uploaded"

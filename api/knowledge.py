@@ -47,7 +47,7 @@ def log_sql_query(query, query_name="SQL Query"):
         logger.debug(f"SQL compile error: {e}")
 
 
-def _generate_build_id(doc_link: str, external_database_uri: str = "") -> str:
+def _generate_build_id(filename: str, metadata: DocumentMetadata, external_database_uri: str = "") -> str:
     """
     Generate a deterministic build_id based on doc_link and external_database_uri.
 
@@ -58,9 +58,12 @@ def _generate_build_id(doc_link: str, external_database_uri: str = "") -> str:
     Returns:
         SHA256 hash of the combined string
     """
+    doc_link = metadata.doc_link or ""
     # Combine doc_link and external_database_uri for hash generation
-    combined_string = f"{doc_link}||{external_database_uri}"
-
+    combined_string = f"{filename}||{doc_link}||{external_database_uri}"
+    logger.info(
+        f"Generating build_id with filename: {filename}, doc_link: {doc_link}, external_database_uri: {external_database_uri}"
+    )
     # Generate SHA256 hash
     hash_object = hashlib.sha256(combined_string.encode("utf-8"))
     return hash_object.hexdigest()
@@ -150,7 +153,7 @@ def _save_file_and_metadata(
     with open(file_path, "wb") as buffer:
         content = file.file.read()
         buffer.write(content)
-
+    logger.info(f"Saved file {filename} to {file_path}")
     # Save metadata as JSON
     metadata_file = base_dir / "document_metadata.json"
     metadata_dict = metadata.dict()
@@ -160,7 +163,7 @@ def _save_file_and_metadata(
 
     with open(metadata_file, "w", encoding="utf-8") as f:
         json.dump(metadata_dict, f, indent=2, ensure_ascii=False)
-
+    logger.info(f"Saved metadata for {filename} to {metadata_file}")
 
 def _get_versioned_directory(base_dir: Path) -> Path:
     """
@@ -179,6 +182,7 @@ def _get_versioned_directory(base_dir: Path) -> Path:
         versioned_dir = parent_dir / f"{base_name}_v{counter}"
         if not versioned_dir.exists():
             return versioned_dir
+        logger.info(f"Versioned directory already exists: {versioned_dir}")
         counter += 1
 
 
@@ -198,8 +202,10 @@ def _save_uploaded_file_with_metadata(
             if db_manager.is_local_mode(metadata.database_uri)
             else metadata.database_uri
         )
-        build_id = _generate_build_id(metadata.doc_link, external_db_uri or "")
-
+        build_id = _generate_build_id(filename, metadata, external_db_uri or "")
+        logger.info(
+            f"Generated build_id: {build_id} for file {filename} with link {metadata.doc_link}"
+        )
         # Check if GraphBuild already exists for this build_id
         # This is sufficient since build_id uniquely identifies doc_link + database_uri
         with SessionLocal() as db:
@@ -234,6 +240,7 @@ def _save_uploaded_file_with_metadata(
             while True:
                 versioned_dir = parent_dir / f"{base_name}_v{counter}"
                 if versioned_dir.exists():
+                    logger.info(f"{versioned_dir} exists, checking for metadata")
                     directories_to_check.append(versioned_dir)
                     counter += 1
                 else:

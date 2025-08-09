@@ -199,6 +199,7 @@ class BlueprintGenerationTool(BaseTool):
         Returns:
             ToolResult with blueprint generation results
         """
+        blueprint_id = None  # Ensure blueprint_id is always defined
         try:
             topic_name = input_data["topic_name"]
             source_data_ids = input_data.get("source_data_ids")
@@ -212,16 +213,27 @@ class BlueprintGenerationTool(BaseTool):
 
             with self.session_factory() as db:
                 # Get source data for the topic
-                query = db.query(SourceData).filter(SourceData.topic_name == topic_name)
-
+                all_source_data = (
+                    db.query(SourceData)
+                    .filter(SourceData.topic_name == topic_name)
+                    .order_by(SourceData.created_at)
+                    .all()
+                )
+                self.logger.info(
+                    f"Retrieved {len(all_source_data)} source data records for topic: {topic_name}"
+                )
                 if source_data_ids:
-                    query = query.filter(SourceData.id.in_(source_data_ids))
+                    new_source_data_list = [
+                        sd for sd in all_source_data if sd.id in source_data_ids
+                    ]
+                else:
+                    new_source_data_list = all_source_data
 
-                source_data_list = query.order_by(SourceData.created_at).all()
+                self.logger.info(
+                    f"Retrieved new_source_data_list: {new_source_data_list}"
+                )
 
-                self.logger.info(f"Retrieved source_data_list: {source_data_list}")
-
-                if not source_data_list:
+                if not new_source_data_list:
                     return ToolResult(
                         success=False,
                         error_message=f"No source data found for topic: {topic_name}",
@@ -229,84 +241,36 @@ class BlueprintGenerationTool(BaseTool):
 
                 # Calculate version hash from all source data versions
                 version_input = "|".join(
-                    sorted([sd.content_hash for sd in source_data_list])
+                    sorted([sd.content_hash for sd in all_source_data])
                 )
                 version_hash = hashlib.sha256(version_input.encode("utf-8")).hexdigest()
 
                 self.logger.info(
                     f"Calculated version hash for source_data_list: {version_hash}"
                 )
-
-                # Check if blueprint is up-to-date (unless forcing regeneration)
-                if not force_regenerate:
-                    existing_blueprint = (
-                        db.query(AnalysisBlueprint)
-                        .filter(
-                            AnalysisBlueprint.topic_name == topic_name,
-                            AnalysisBlueprint.status == "ready",
-                            AnalysisBlueprint.source_data_version_hash == version_hash,
-                        )
-                        .first()
-                    )
-
-                    if existing_blueprint:
-                        self.logger.info(
-                            f"Blueprint already up-to-date for topic: {topic_name}"
-                        )
-                        return ToolResult(
-                            success=True,
-                            data={
-                                "blueprint_id": existing_blueprint.id,
-                                "reused_existing": True,
-                                "contributing_source_data_count": len(source_data_list),
-                                "source_data_version_hash": version_hash,
-                            },
-                            metadata={
-                                "topic_name": topic_name,
-                                "source_data_count": len(source_data_list),
-                            },
-                        )
-
-                # Create or update blueprint record
-                blueprint = (
-                    db.query(AnalysisBlueprint)
-                    .filter(AnalysisBlueprint.topic_name == topic_name)
-                    .first()
-                )
-
-                if not blueprint:
-                    blueprint = AnalysisBlueprint(
-                        topic_name=topic_name,
-                        status="generating",
-                        source_data_version_hash="",
-                        contributing_source_data_ids=[],
-                    )
-                    db.add(blueprint)
-                    db.flush()
-                else:
-                    blueprint.status = "generating"
-                    blueprint.error_message = None
-
-                blueprint_id = blueprint.id
-
-                # Convert source data to document format
-                documents = self._convert_source_data_to_documents(source_data_list)
-
-                self.logger.info(
-                    f"successfully converted {len(documents)} source data records to documents for cognitive map generation"
-                )
-                db.commit()  # Commit to ensure blueprint is created
-            try:
-                # Ensure components are properly initialized
+                                # Ensure components are properly initialized
                 if not self.cm_generator or not self.graph_builder:
                     raise ValueError("Required components not initialized")
 
+                if force_regenerate:
+                    documents = self._convert_source_data_to_documents(new_source_data_list)
+
+                    self.logger.info(
+                        f"successfully converted {len(documents)} new source data records to documents for cognitive map generation"
+                    )
+                else:
+                    documents = self._convert_source_data_to_documents(all_source_data)
                 # Generate cognitive maps for all documents
-                self.logger.info(
-                    f"Generating cognitive maps for {len(documents)} documents"
-                )
+                    self.logger.info(
+                        f"successfully converted {len(documents)} all source data records to documents for cognitive map generation"
+                    )
+            try:
+
                 cognitive_maps = self.cm_generator.batch_generate_cognitive_maps(
                     topic_name, documents, force_regenerate=force_regenerate
+                )
+                self.logger.info(
+                    f"successfully generated cognitive maps {cognitive_maps}"
                 )
 
                 if not cognitive_maps:
@@ -315,11 +279,9 @@ class BlueprintGenerationTool(BaseTool):
                     )
 
                 # Generate analysis blueprint
-                self.logger.info(
-                    f"Generating analysis blueprint from {len(cognitive_maps)} cognitive maps"
-                )
+
                 blueprint_result = self.graph_builder.generate_analysis_blueprint(
-                    topic_name, cognitive_maps, force_regenerate=True
+                    topic_name, cognitive_maps, force_regenerate=force_regenerate
                 )
                 self.logger.info(f"Generated blueprint result: {blueprint_result}")
 
@@ -327,26 +289,23 @@ class BlueprintGenerationTool(BaseTool):
                 with self.session_factory() as db:
                     blueprint = (
                         db.query(AnalysisBlueprint)
-                        .filter(AnalysisBlueprint.id == blueprint_id)
+                        .filter(AnalysisBlueprint.topic_name == topic_name)
                         .first()
                     )
-
+                    
                     blueprint.status = "ready"
-                    blueprint.processing_items = blueprint_result.processing_items
-                    blueprint.processing_instructions = (
-                        blueprint_result.processing_instructions
-                    )
                     blueprint.source_data_version_hash = version_hash
                     blueprint.contributing_source_data_ids = [
                         doc["source_id"] for doc in documents
                     ]
                     blueprint.error_message = None
-
+                    blueprint_id = blueprint.id
+                    processing_items = blueprint.processing_items
+                    processing_instructions = blueprint.processing_instructions
                     db.commit()
 
                 # Prepare summary
-                processing_items = blueprint_result.processing_items or {}
-                processing_instructions = blueprint_result.processing_instructions or ""
+               
                 summary = {
                     "canonical_entities_count": len(
                         processing_items.get("canonical_entities", {})
@@ -368,30 +327,31 @@ class BlueprintGenerationTool(BaseTool):
                     data={
                         "blueprint_id": blueprint_id,
                         "reused_existing": False,
-                        "contributing_source_data_count": len(source_data_list),
+                        "contributing_source_data_count": len(new_source_data_list),
                         "source_data_version_hash": version_hash,
                         "blueprint_summary": summary,
                     },
                     metadata={
                         "topic_name": topic_name,
-                        "source_data_count": len(source_data_list),
+                        "source_data_count": len(all_source_data),
                         "cognitive_maps_count": len(cognitive_maps),
                     },
                 )
-
             except Exception as e:
-                # Update blueprint status to failed
-                with self.session_factory() as db:
-                    blueprint = (
-                        db.query(AnalysisBlueprint)
-                        .filter(AnalysisBlueprint.id == blueprint_id)
-                        .first()
-                    )
-                    if blueprint:
-                        blueprint.status = "failed"
-                        blueprint.error_message = str(e)
-                        db.commit()
+                # Update blueprint status to failed only if blueprint_id is set
+                if blueprint_id is not None:
+                    with self.session_factory() as db:
+                        blueprint = (
+                            db.query(AnalysisBlueprint)
+                            .filter(AnalysisBlueprint.id == blueprint_id)
+                            .first()
+                        )
+                        if blueprint:
+                            blueprint.status = "failed"
+                            blueprint.error_message = str(e)
+                            db.commit()
 
+                raise e
                 raise e
 
         except Exception as e:

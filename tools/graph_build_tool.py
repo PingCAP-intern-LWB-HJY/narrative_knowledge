@@ -721,7 +721,7 @@ class GraphBuildTool(BaseTool):
                 document_cognitive_map,
             )
             self.logger.info(
-                f"Successfully extracted {len(triplets)} triplets by function: extract_triplets_from_document"
+                f"Successfully extracted {len(triplets)} triplets by function: extract_triplets_from_document for document {source_data.name}"
             )
             if not triplets:
                 self.logger.warning(

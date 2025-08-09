@@ -470,15 +470,15 @@ class DocumentETLTool(BaseTool):
             # Link is already resolved in route_wrapper.py
             link = file_info.get("link", None)
 
-            original_filename = file_info.get("filename", None)
+            filename = file_info.get("filename", None)
 
-            self.logger.info(f"Starting ETL processing for file: {original_filename}")
+            self.logger.info(f"Starting ETL processing for file: {filename}")
 
             with self.session_factory() as db:
                 raw_data_source = (
                     db.query(RawDataSource)
                     .filter_by(
-                        original_filename=file_info["filename"], topic_name=topic_name
+                        original_filename=filename, topic_name=topic_name
                     )
                     .first()
                 )
@@ -581,7 +581,7 @@ class DocumentETLTool(BaseTool):
                         content=content,
                         content_size=len(content),
                         content_type=source_type,
-                        name=original_filename,
+                        name=filename,
                         link=link,
                     )
                     db.add(content_store)
@@ -591,7 +591,7 @@ class DocumentETLTool(BaseTool):
                 )
                 # Create SourceData record with separated metadata
                 source_data = SourceData(
-                    name=original_filename,
+                    name=filename,
                     topic_name=topic_name,
                     raw_data_source_id=raw_data_source.id,
                     content_hash=file_hash,
@@ -599,7 +599,7 @@ class DocumentETLTool(BaseTool):
                     source_type=source_type,
                     attributes={
                         "file_path": str(file_path),
-                        "original_filename": original_filename,
+                        "original_filename": filename,
                         "file_size": len(file_content),
                         "extraction_method": "DocumentETLTool",
                     },

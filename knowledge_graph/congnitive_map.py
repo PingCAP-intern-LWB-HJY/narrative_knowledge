@@ -121,7 +121,11 @@ class DocumentCognitiveMapGenerator:
                     db.commit()
                     db.refresh(current_map)
                     return cognitive_map_data
-
+            else:
+                # Create new cognitive map entry
+                logger.info(
+                    f"Creating new cognitive map for document: {document['source_name']}"
+                )
             # Create new cognitive map entry
             cognitive_map = DocumentSummary(
                 document_id=document["source_id"],
@@ -215,6 +219,7 @@ class DocumentCognitiveMapGenerator:
                         logger.info(
                             f"Document processed successfully ({completed_count}/{len(documents)}): {doc['source_name']}"
                         )
+                        
                 except Exception as e:
                     error_msg = f"Unexpected error processing {doc['source_name']}: {e}"
                     errors.append(error_msg)
@@ -309,7 +314,9 @@ Return only the JSON, no other text."""
 
             # Use robust JSON parsing with escape error fixing and LLM fallback
             cognitive_map_data = robust_json_parse(response, self.llm_client, "object")
-
+            logger.info(
+                f"Parsed cognitive map data for {document['source_name']}: {cognitive_map_data}"
+            )
             # Validate and set defaults for required fields
             cognitive_map_data.setdefault("summary", "Summary generation failed")
             cognitive_map_data.setdefault("key_entities", [])

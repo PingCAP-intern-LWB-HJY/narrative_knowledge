@@ -150,6 +150,7 @@ class PipelineOrchestrator:
         self.logger.info(f"Starting pipeline execution: {execution_id} - {tools}")
 
         results = {}
+        # 
         pipeline_context = context.copy()
 
         try:
@@ -161,6 +162,7 @@ class PipelineOrchestrator:
                     )
 
                 # Prepare input for this tool
+                self.logger.info(f"Preparing input for tool: {tool_name}, context: {pipeline_context}")
                 tool_input = self._prepare_tool_input(
                     tool_name, pipeline_context, results
                 )
@@ -182,7 +184,7 @@ class PipelineOrchestrator:
                 result = tool.execute_with_tracking(
                     tool_input, f"{execution_id}_{tool_name}"
                 )
-
+                self.logger.info(f"{tool_name} result: {result.to_dict()}")
                 if not result.success:
                     return ToolResult(
                         success=False,
@@ -338,16 +340,12 @@ class PipelineOrchestrator:
                     "topic_name": context.get("topic_name"),
                     "source_data_ids": source_data_ids or None,
                     "force_regenerate": context.get("force_regenerate", False),
-                    "llm_client": context.get("llm_client"),
-                    "embedding_func": context.get("embedding_func"),
                 }
 
             return {
                 "topic_name": context.get("topic_name"),
                 "source_data_ids": source_data_ids,
                 "force_regenerate": context.get("force_regenerate", False),
-                "llm_client": context.get("llm_client"),
-                "embedding_func": context.get("embedding_func"),
             }
 
         elif tool_key == "graph_build":
@@ -371,8 +369,6 @@ class PipelineOrchestrator:
                 input_data = {
                     "source_data_id": source_data_ids[0],
                     "force_regenerate": context.get("force_regenerate", False),
-                    "llm_client": context.get("llm_client"),
-                    "embedding_func": context.get("embedding_func"),
                 }
                 if blueprint_id:
                     input_data["blueprint_id"] = blueprint_id
@@ -384,8 +380,6 @@ class PipelineOrchestrator:
                     "source_data_ids": source_data_ids,
                     "blueprint_id": blueprint_id,
                     "force_regenerate": context.get("force_regenerate", False),
-                    "llm_client": context.get("llm_client"),
-                    "embedding_func": context.get("embedding_func"),
                 }
 
             else:
@@ -393,8 +387,6 @@ class PipelineOrchestrator:
                 return {
                     "topic_name": topic_name,
                     "force_regenerate": context.get("force_regenerate", False),
-                    "llm_client": context.get("llm_client"),
-                    "embedding_func": context.get("embedding_func"),
                 }
 
         elif tool_key == "memory_graph_build":
@@ -438,7 +430,7 @@ class PipelineOrchestrator:
         elif tool_key == "blueprint_gen" and result.success:
             updated_context["blueprint_id"] = result.data.get("blueprint_id")
             updated_context["topic_name"] = result.metadata.get("topic_name")
-
+            self.logger.info(f"successfully updated context: 'blueprint_id:{updated_context['blueprint_id']}, topic_name:{updated_context['topic_name']}' after blueprint generation")
         return updated_context
 
     def get_existing_blueprint_id(self, topic_name: str) -> Optional[str]:

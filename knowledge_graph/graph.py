@@ -106,20 +106,6 @@ class NarrativeKnowledgeGraphBuilder:
         """
         if len(cognitive_maps) == 0:
             raise ValueError(f"No cognitive maps found for topic: {topic_name}")
-
-        with self.SessionLocal() as db:
-            # Check if blueprint already exists
-            existing_blueprint = (
-                db.query(AnalysisBlueprint)
-                .filter(AnalysisBlueprint.topic_name == topic_name)
-                .order_by(AnalysisBlueprint.created_at.desc())
-                .first()
-            )
-
-            if existing_blueprint and not force_regenerate:
-                logger.info(f"Using existing global blueprint for {topic_name}")
-                return existing_blueprint
-
         # Enhanced Global Blueprint Generation Prompt
         blueprint_prompt = f"""You are a master strategist analyzing cognitive maps from {len(cognitive_maps)} documents for "{topic_name}". 
 
@@ -257,7 +243,7 @@ Generate the global blueprint for "{topic_name}"."""
                 "document_count": len(cognitive_maps),
             }
             logger.info(
-                f"{cognitive_maps} cognitive maps processed."
+                f"Processed {len(cognitive_maps)} cognitive maps."
             )
             with self.SessionLocal() as db:
                 blueprint = db.query(AnalysisBlueprint).filter_by(topic_name=topic_name).first()
@@ -335,12 +321,8 @@ Generate the global blueprint for "{topic_name}"."""
             semantic_triplets = self.extract_narrative_triplets_from_document_content(
                 topic_name, document_content, blueprint, document_cognitive_map
             )
-
-            for triplet in semantic_triplets:
-                logger.info(f"semantic triplet: {triplet}")
-
             logger.info(
-                f"Document({document['source_name']}): {len(semantic_triplets)} semantic triplets. Extracted {len(semantic_triplets)} total triplets."
+                f"Document({document['source_name']}):Extracted {len(semantic_triplets)} semantic triplets: {semantic_triplets}"
             )
 
             return semantic_triplets
