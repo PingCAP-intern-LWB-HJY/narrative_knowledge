@@ -687,25 +687,24 @@ curl -X POST "http://localhost:8000/api/v1/save" \
 - **MemoryGraphBuildTool**: Inherited from GraphBuildTool, process chat messages and generate personal blueprint; then build knowledge graph from blueprints and extract relationships
 
 ### Processing Pipeline Configuration
-The `process_strategy` parameter allows you to customize the processing pipeline:
+The `process_strategy` parameter allows you to customize the processing pipeline using predefined standard pipelines:
 
-```json
-{
-  "pipeline": ["etl", "blueprint_gen", "graph_build"],
-  "tool_configs": {
-    "DocumentETLTool": {
-      "max_file_size": 10485760,
-      "supported_types": ["pdf", "md", "txt", "json"]
-    },
-    "BlueprintGenerationTool": {
-      "max_chunk_size": 4000,
-      "overlap": 200
-    },
-    "GraphBuildTool": {
-      "max_triplets": 100,
-      "confidence_threshold": 0.8
-    }
-  }
-}
-```
+#### Standard Pipeline Types
+
+**Knowledge Graph Pipelines:**
+- `"single_doc_existing_topic"`: Process single document for existing topic - `["etl", "graph_build"]`
+- `"batch_doc_existing_topic"`: Process batch documents for existing topic - `["etl", "blueprint_gen", "graph_build"]`
+- `"new_topic_batch"`: Process batch documents for new topic - `["etl", "blueprint_gen", "graph_build"]`
+- `"text_to_graph"`: Direct text processing to graph - `["graph_build"]`
+
+**Memory Pipelines:**
+- `"memory_direct_graph"`: Direct memory processing with graph building - `["memory_graph_build"]`
+- `"memory_single"`: Single memory processing - `["memory_graph_build"]`
+
+#### Pipeline Tools Mapping
+The system uses the following tool mapping:
+- `"etl"` → `DocumentETLTool`
+- `"blueprint_gen"` → `BlueprintGenerationTool`
+- `"graph_build"` → `GraphBuildTool`
+- `"memory_graph_build"` → `MemoryGraphBuildTool`
 ```
