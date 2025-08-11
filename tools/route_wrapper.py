@@ -27,8 +27,7 @@ class ToolsRouteWrapper:
         process_strategy: Optional[Union[str, Dict[str, Any]]] = None,
         target_type: str = "knowledge_graph",
         links: List[str] = [],
-        llm_client=None,
-        embedding_func=None,
+        
     ) -> ToolResult:
         """
         Route wrapper function: Process file upload requests

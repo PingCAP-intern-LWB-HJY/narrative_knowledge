@@ -463,16 +463,16 @@ class BackgroundTask(Base):
     __tablename__ = "background_tasks"
 
     id = Column(String(36), primary_key=True, nullable=False)
-    task_type = Column(String(50), nullable=False)  # 'memory_processing', 'graph_build'
-    source_id = Column(String(36), nullable=False)  # Related source_data ID or build ID
-    user_id = Column(String(255), nullable=True)
+    task_type = Column(String(50), nullable=False)  # 'memory_processing', 'file_processing'
+    source_id = Column(String(36), nullable=True)   # Related source_data ID
+    user_id = Column(String(255), nullable=True)    # For personal memory
     topic_name = Column(String(255), nullable=True)
     status = Column(
         Enum("processing", "completed", "failed"),
         nullable=False,
         default="processing",
     )
-    message_count = Column(BigInteger, nullable=True)
+    message_count = Column(BigInteger, nullable=True)   # Chat messages count, or files count
     result = Column(JSON, nullable=True)
     error = Column(Text, nullable=True)
     created_at = Column(DateTime, default=func.current_timestamp())

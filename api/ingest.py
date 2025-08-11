@@ -7,9 +7,10 @@ from fastapi import APIRouter, Request, HTTPException, status, UploadFile, Form
 from fastapi.responses import JSONResponse
 
 from api.models import APIResponse, DocumentMetadata, ProcessedDocument
-from api.memory import _get_memory_system, register_background_task
+from api.memory import _get_memory_system, register_memory_background_task
 from api.memory import store_chat_batch, memory_background_processing
-from knowledge_graph.models import RawDataSource
+from api.knowledge import register_file_background_task, file_background_processing
+from knowledge_graph.models import RawDataSource, BackgroundTask
 from setting.db import SessionLocal, db_manager
 
 import asyncio
@@ -99,6 +100,77 @@ async def _process_file_for_knowledge_graph(
         data=processed_doc.dict(),
     )
     return JSONResponse(status_code=status.HTTP_200_OK, content=response.dict())
+
+
+async def _store_and_get_build_id(
+    file: UploadFile, metadata_str: str
+) -> tuple[Path, str, str, bool, ProcessedDocument]:
+    """Store file and return storage directory and build_id without processing."""
+    try:
+        metadata = json.loads(metadata_str)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON in metadata.",
+        )
+    
+    _validate_file(file)
+
+    topic_name = metadata.get("topic_name")
+    link = metadata.get("link")
+    database_uri = metadata.get("database_uri")
+    custom_metadata = {
+        k: v
+        for k, v in metadata.items()
+        if k not in ["topic_name", "link", "database_uri"]
+    }
+
+    if not topic_name or not link:
+        raise HTTPException(
+            status_code=400,
+            detail="`topic_name` and `link` are required in metadata for target_type 'knowledge_graph'.",
+        )
+    
+    file_metadata = DocumentMetadata(
+        doc_link=link,
+        topic_name=topic_name,
+        database_uri=database_uri,
+        custom_metadata=custom_metadata,
+    )
+
+    storage_directory, build_id = _save_uploaded_file_with_metadata(file, file_metadata)
+
+    is_existing = False
+    with SessionLocal() as db:
+        build_status = (
+            db.query(RawDataSource)
+            .filter(
+                RawDataSource.id == build_id,
+                RawDataSource.topic_name == topic_name,
+            )
+            .first()
+        )
+        if build_status:
+            is_existing = True
+
+    if is_existing:
+        status_msg = "already_exists"
+        logger.info(
+            f"File {file.filename} for topic {topic_name} already exists in the database."
+        )
+    else:
+        _create_processing_task(file, storage_directory, file_metadata, build_id)
+        status_msg = "uploaded"
+
+    processed_doc = ProcessedDocument(
+        id=build_id,
+        name=file.filename or "unknown",
+        file_path=str(storage_directory),
+        doc_link=link,
+        file_type=_get_file_type(Path(file.filename or "unknown")),
+        status=status_msg,
+    )
+    return storage_directory, build_id, topic_name, is_existing, processed_doc
 
 
 async def _process_json_for_personal_memory(
@@ -327,34 +399,89 @@ async def save_data_pipeline(
         else:
             links_list = [f"file://links/{file.filename}" for file in files]
         
-            
-        tasks = []
+
+        # Generate task ID for background processing tracking
+        task_id = str(uuid.uuid4())
+        
+        # Store files and get build IDs using existing functions
+        build_ids = []
+        storage_dirs = []
+        processed_docs = []
+
+        # Register background task for entire batch
+        topic_name = parsed_metadata.get("topic_name", "")
+        register_file_background_task(
+            task_id, 
+            task_id,
+            topic_name, 
+            len(files)
+        )
+        
         for file, link in zip(files, links_list):
             single_metadata = copy.deepcopy(parsed_metadata)
             single_metadata["link"] = link
-
-            task = _handle_form_data(
+            
+            storage_dir, build_id, topic_name, is_existing, processed_doc = await _store_and_get_build_id(
                 file=file,
                 metadata_str=json.dumps(single_metadata),
-                target_type=target_type,
             )
-            tasks.append(task)
-
-        await asyncio.gather(*tasks)
-        # Use tools wrapper
-        result = tools_wrapper.process_upload_request(
-            files=files,
-            metadata=metadata if metadata is not None else {},
-            process_strategy=process_strategy,
-            target_type=target_type,
-            links=links_list,
+            if is_existing:
+                error = f"File {file.filename} for topic {topic_name} already exists in the database. \
+                    You uploaded the same inputs as before. \
+                    Background processing failed for file '{file}'."
+                with SessionLocal() as db:
+                    task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
+                    if task:
+                        task.status = "failed"
+                        task.source_id = None
+                        task.error = str(error)
+                        db.commit()
+                return JSONResponse(
+                    status_code=404,
+                    content={
+                        "success": False,
+                        "message": error,
+                        "data": {
+                            "files_uploaded": 0,
+                            "task_id": task_id,
+                            "build_id": build_id,
+                            "topic_name": topic_name,
+                        },
+                    },
+                )
+            build_ids.append(build_id)
+            storage_dirs.append(str(storage_dir))
+            processed_docs.append(processed_doc.dict())
+        
+        source_id = build_ids[0][:36] if build_ids else task_id
+        
+        # Start background processing without waiting
+        asyncio.create_task(
+            file_background_processing(
+                files_data=files,
+                metadata=parsed_metadata,
+                links_list=links_list,
+                process_strategy=process_strategy,
+                target_type=target_type,
+                task_id=task_id,
+                source_id=source_id,
+            )
         )
-        logger.info(f"Processed upload request: {result.to_dict()}")
-        # Convert to API response format
-        if result.success:
-            return JSONResponse(status_code=200, content=result.to_dict())
-        else:
-            return JSONResponse(status_code=500, content=result.to_dict())
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "message": f"Files uploaded successfully. Background processing has started for {len(files)} files.",
+                "data": {
+                    "files_uploaded": len(files),
+                    "task_id": task_id,
+                    "build_ids": build_ids,
+                    "topic_name": topic_name,
+                    "processed_docs": processed_docs
+                },
+            },
+        )
 
     elif "application/json" in content_type:
         # JSON data processing
@@ -387,7 +514,7 @@ async def save_data_pipeline(
             task_id = str(uuid.uuid4())
             
             # Register the task
-            register_background_task(task_id, source_id, user_id, topic_name, len(chat_messages))
+            register_memory_background_task(task_id, source_id, user_id, topic_name, len(chat_messages))
             
             # Start background processing without waiting
             asyncio.create_task(
@@ -456,4 +583,37 @@ async def save_data_pipeline(
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="Unsupported content type. Use application/json or multipart/form-data.",
+        )
+
+
+@router.get("/status/{task_id}")
+async def get_background_task_status(task_id: str) -> JSONResponse:
+    """
+    Get status of background processing task.
+    
+    Args:
+        task_id: Background task ID
+        
+    Returns:
+        JSON response with task status and results
+    """
+    SessionLocal = db_manager.get_session_factory()
+    
+    with SessionLocal() as db:
+        task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
+        
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task {task_id} not found"
+            )
+        
+        # Return task status from database
+        return JSONResponse(
+            status_code=status.HTTP_200_OK, 
+            content={
+                "status": task.status,
+                "message": f"Task {task_id} status retrieved",
+                "data": task.to_dict()
+            }
         )

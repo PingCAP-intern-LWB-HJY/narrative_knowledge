@@ -239,6 +239,16 @@ Enhanced endpoint for saving and processing data using the tools pipeline system
 - `multipart/form-data`: For file uploads
 - `application/json`: For JSON data input
 
+**GET** `/api/v1/status/`
+
+Get the status of a background processing task, either files uploading or memory processing.
+
+**Example using curl:**
+
+```bash
+curl "http://localhost:8000/api/v1/status/{task_id}"
+```
+
 ### For File Uploads (`multipart/form-data`):
 
 #### Method 1: Separate `links` Parameter
@@ -319,185 +329,226 @@ curl -X POST "http://localhost:8000/api/v1/save" \
   -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
 ```
 
-**Response (For Single File Uploading):**
+**Responses:**
+
+- Upon Successful Uploading:
+
 ```json
 {
   "success": true,
+  "message": "Files uploaded successfully. Background processing has started for 3 files.",
   "data": {
-    "results": {
-      "DocumentETLTool": {
-        "success": true,
-        "data": {
-          "source_data_ids": ["214328f2-b13a-4483-aebe-f93994cc5ec8"],
-          "batch_summary": {
-            "total_files": 1,
-            "processed_files": 1,
-            "reused_files": 0,
-            "failed_files": 0
-          }
-        },
-        "execution_id": "f1ed254e-0ee8-44d3-bc53-d8b13d176d51_DocumentETLTool",
-        "duration_seconds": 1.35
-      },
-      "BlueprintGenerationTool": {
-        "success": true,
-        "data": {
-          "blueprint_id": "098409c3-732d-48ba-92e3-f475ecceadae",
-          "reused_existing": true,
-          "contributing_source_data_count": 1
-        },
-        "execution_id": "f1ed254e-0ee8-44d3-bc53-d8b13d176d51_BlueprintGenerationTool",
-        "duration_seconds": 0.33
-      },
-      "GraphBuildTool": {
-        "success": true,
-        "data": {
-          "triplets_extracted": 3,
-          "entities_created": 0,
-          "relationships_created": 1
-        },
-        "execution_id": "f1ed254e-0ee8-44d3-bc53-d8b13d176d51_GraphBuildTool",
-        "duration_seconds": 18.70
-      }
+    "files_uploaded": 3,
+    "task_id": "ea93b4fe-bdc3-4961-b103-bb0f1980a5e8",
+    "build_ids":[
+      "984722a9e00641a33db0fd90bef0c7a754d10e46be3e26246b1583c15fa2f8c9",
+      "e326c7f8e8517507d8d845e8d457b34a648643e54bfcd0d20dc2d9b74007a4e7",
+      "cbad898d4f66556c184f0a872cdf03a6722afa689f7ea6b2bf96fe72e3c8ff71"
+    ],
+    "topic_name": "batch_t1",
+    "processed_docs": [{
+      "id": "984722a9e00641a33db0fd90bef0c7a754d10e46be3e26246b1583c15fa2f8c9",
+      "name": "pipeline_design.md",
+      "file_path": "uploads/batch_t1/pipeline_design_v1",
+      "doc_link": "https://docs.com/batch1",
+      "file_type": "markdown",
+      "status": "uploaded"
     },
-    "pipeline": ["DocumentETLTool", "BlueprintGenerationTool", "GraphBuildTool"],
-    "duration_seconds": 20.39
-  },
-  "error_message": null,
-  "execution_id": "f1ed254e-0ee8-44d3-bc53-d8b13d176d51",
-  "duration_seconds": 20.39
+    {
+      "id": "e326c7f8e8517507d8d845e8d457b34a648643e54bfcd0d20dc2d9b74007a4e7",
+      "name": "SmartSave_api_v1.md",
+      "file_path": "uploads/batch_t1/SmartSave_api_v1_v1",
+      "doc_link": "https://docs.com/batch2",
+      "file_type": "markdown",
+      "status": "uploaded"
+    },
+    {
+      "id": "cbad898d4f66556c184f0a872cdf03a6722afa689f7ea6b2bf96fe72e3c8ff71",
+      "name": "knowledge_graph_quality_standard.md",
+      "file_path": "uploads/batch_t1/knowledge_graph_quality_standard_v1",
+      "doc_link": "https://test.com/files3",
+      "file_type": "markdown",
+      "status": "uploaded"
+    }]
+  }
 }
 ```
 
+- When Being Processed (Using `GET` method):
 
-
-**Response (For Batch Files Uploading):**
 ```json
 {
-  "success": true,
+  "status": "processing",
+  "message": "Task ea93b4fe-bdc3-4961-b103-bb0f1980a5e8 status retrieved",
   "data": {
-    "results": {
-      "DocumentETLTool": {
-        "success": true, 
-        "data": {
-          "source_data_ids": ["505f936e-d130-442b-95d5-f71677912208","0ac2d49c-d7ea-43fc-8304-3146ab38227d","a4af367d-b141-4c3e-a525-75d27f8a296c"],
-          "results": [{
-            "source_data_id": "505f936e-d130-442b-95d5-f71677912208",
-            "content_hash": "8a8a18f81dc598d0d70aa645e24957cad56aaeda01f5ab9eddd46ff6ca847795",
-            "content_size": 8184,
-            "source_type": "text/markdown",
-            "reused_existing": true,
-            "status": "success",
-            "file_path": "/var/folders/1l/ncvsdgnj74b127ww1sc4d0t00000gn/T/tmpi6k628u5/0_pipeline_design.md"
+    "task_id": "ea93b4fe-bdc3-4961-b103-bb0f1980a5e8",
+    "status": "processing",
+    "source_id": "ea93b4fe-bdc3-4961-b103-bb0f1980a5e8",
+    "user_id": null,
+    "message_count": 3,
+    "result": null,
+    "error": null,
+    "created_at": "2025-08-11T21:29:29",
+    "updated_at": "2025-08-11T21:29:29"
+  }
+}
+```
+
+- Final Result (Using `GET` method):
+
+```json
+{
+  "status": "completed",
+  "message": "Task ea93b4fe-bdc3-4961-b103-bb0f1980a5e8 status retrieved",
+  "data": {
+    "task_id": "ea93b4fe-bdc3-4961-b103-bb0f1980a5e8",
+    "status": "completed",
+    "source_id": "984722a9e00641a33db0fd90bef0c7a754d1",
+    "user_id": null,
+    "message_count": 3,
+    "result": {
+      "data": {
+        "duration_seconds": 73.09505,
+        "pipeline": [
+          "DocumentETLTool",
+          "BlueprintGenerationTool",
+          "GraphBuildTool"
+        ],
+        "results": {
+          "DocumentETLTool": {
+            "data": {
+              "batch_summary": {
+                "failed_files": 0,
+                "processed_files": 3,
+                "reused_files": 0,
+                "total_files": 3
+              },
+              "results": [
+                {
+                  "content_hash": "8a8a18f81dc598d0d70aa645e24957cad56aaeda01f5ab9eddd46ff6ca847795",
+                  "content_size": 8184,
+                  "file_path": null,
+                  "reused_existing": false,
+                  "source_data_id": "b2d50702-5c11-4fa4-9c09-45ccde610f3a",
+                  "source_type": "text/markdown",
+                  "status": "success"
+                },
+                {
+                  "content_hash": "742c13197253c16bcc5fdec6fa7048c2492f4cf6946714d9fbc26a7df948e1ad",
+                  "content_size": 4106,
+                  "file_path": null,
+                  "reused_existing": false,
+                  "source_data_id": "7b172094-277a-4d19-ae71-6069077ca962",
+                  "source_type": "text/markdown",
+                  "status": "success"
+                },
+                {
+                  "content_hash": "4c7d00f36c2f0dddad20cf5e6e36a7176d820c2ffefe35ece545775995e2a9b8",
+                  "content_size": 8841,
+                  "file_path": null,
+                  "reused_existing": false,
+                  "source_data_id": "6129393e-4a4b-46a6-a0ef-506b18626552",
+                  "source_type": "text/markdown",
+                  "status": "success"
+                }
+              ],
+              "source_data_ids": [
+                "b2d50702-5c11-4fa4-9c09-45ccde610f3a",
+                "7b172094-277a-4d19-ae71-6069077ca962",
+                "6129393e-4a4b-46a6-a0ef-506b18626552"
+              ]
+            },
+            "duration_seconds": 1.053446,
+            "error_message": null,
+            "execution_id": "6c274ea1-8202-4988-854d-38c2f7ae44af_DocumentETLTool",
+            "metadata": {
+              "topic_name": "batch_t1",
+              "total_files": 3
+            },
+            "success": true,
+            "timestamp": "2025-08-11T21:29:31.369107+00:00"
           },
-            {
-            "source_data_id": "0ac2d49c-d7ea-43fc-8304-3146ab38227d",
-            "content_hash": "742c13197253c16bcc5fdec6fa7048c2492f4cf6946714d9fbc26a7df948e1ad",
-            "content_size": 4106,
-            "source_type": "text/markdown",
-            "reused_existing": true,
-            "status": "success",
-            "file_path": "/var/folders/1l/ncvsdgnj74b127ww1sc4d0t00000gn/T/tmpi6k628u5/1_SmartSave_api_v1.md"
+          "BlueprintGenerationTool": {
+            "data": {
+              "blueprint_id": "989db983-8d03-465d-a96f-b86d46437625",
+              "blueprint_summary": {
+                "canonical_entities_count": 3,
+                "cognitive_maps_used": 3,
+                "global_timeline_events": 2,
+                "key_patterns_count": 3,
+                "processing_instructions_length": 644
+              },
+              "contributing_source_data_count": 3,
+              "reused_existing": false,
+              "source_data_version_hash": "59e4c02cbd094d25e50ec216c983a909aa89bcd4421e2555c1d4b6483bf76b46"
+            },
+            "duration_seconds": 35.629076,
+            "error_message": null,
+            "execution_id": "6c274ea1-8202-4988-854d-38c2f7ae44af_BlueprintGenerationTool",
+            "metadata": {
+              "cognitive_maps_count": 3,
+              "source_data_count": 3,
+              "topic_name": "batch_t1"
+            },
+            "success": true,
+            "timestamp": "2025-08-11T21:30:06.998510+00:00"
           },
-            {
-            "source_data_id": "a4af367d-b141-4c3e-a525-75d27f8a296c",
-            "content_hash": "4c7d00f36c2f0dddad20cf5e6e36a7176d820c2ffefe35ece545775995e2a9b8",
-            "content_size": 8841,
-            "source_type": "text/markdown",
-            "reused_existing": false,
-            "status": "success",
-            "file_path": "/var/folders/1l/ncvsdgnj74b127ww1sc4d0t00000gn/T/tmpi6k628u5/2_knowledge_graph_quality_standard.md"
-          }],
-          "batch_summary": {
-            "total_files": 3,
-            "processed_files": 1,
-            "reused_files": 2,
-            "failed_files": 0
+          "GraphBuildTool": {
+            "data": {
+              "blueprint_id": "989db983-8d03-465d-a96f-b86d46437625",
+              "failed_count": 0,
+              "processed_count": 3,
+              "results": [
+                {
+                  "entities_created": 3,
+                  "relationships_created": 2,
+                  "source_data_id": "b2d50702-5c11-4fa4-9c09-45ccde610f3a",
+                  "status": "success",
+                  "triplets_extracted": 2
+                },
+                {
+                  "entities_created": 0,
+                  "relationships_created": 1,
+                  "source_data_id": "7b172094-277a-4d19-ae71-6069077ca962",
+                  "status": "success",
+                  "triplets_extracted": 1
+                },
+                {
+                  "entities_created": 6,
+                  "relationships_created": 3,
+                  "source_data_id": "6129393e-4a4b-46a6-a0ef-506b18626552",
+                  "status": "success",
+                  "triplets_extracted": 3
+                }
+              ],
+              "total_entities_created": 9,
+              "total_relationships_created": 6,
+              "total_triplets_extracted": 6
+            },
+            "duration_seconds": 36.410397,
+            "error_message": null,
+            "execution_id": "6c274ea1-8202-4988-854d-38c2f7ae44af_GraphBuildTool",
+            "metadata": {
+              "blueprint_id": "989db983-8d03-465d-a96f-b86d46437625",
+              "source_data_count": 3
+            },
+            "success": true,
+            "timestamp": "2025-08-11T21:30:43.386873+00:00"
           }
-        },
-        "error_message": null,
-        "metadata": {
-          "topic_name": "batch_t1",
-          "total_files": 3
-        },
-        "execution_id": "1f12e7df-ef01-4037-9268-7688298dbfb0_DocumentETLTool",
-        "duration_seconds": 5.791588,
-        "timestamp": "2025-08-04T21:10:42.725552+00:00"
+        }
       },
-      "BlueprintGenerationTool": {
-        "success": true,
-        "data": {
-          "blueprint_id": "cc039049-0584-4cee-a3f6-0736d8b45056",
-          "reused_existing": false,
-          "contributing_source_data_count": 3,
-          "source_data_version_hash": "59e4c02cbd094d25e50ec216c983a909aa89bcd4421e2555c1d4b6483bf76b46",
-          "blueprint_summary": {
-            "canonical_entities_count": 3,
-            "key_patterns_count": 3,
-            "global_timeline_events": 2,
-            "processing_instructions_length": 632,
-            "cognitive_maps_used": 3
-          }
-        },
-        "error_message": null,
-        "metadata": {
-          "topic_name": "batch_t1",
-          "source_data_count": 3,
-          "cognitive_maps_count": 3
-        },
-        "execution_id": "1f12e7df-ef01-4037-9268-7688298dbfb0_BlueprintGenerationTool",
-        "duration_seconds": 29.842363,
-        "timestamp": "2025-08-04T21:11:12.568225+00:00"
-      },
-      "GraphBuildTool": {
-        "success": true,
-        "data": {
-          "blueprint_id": "cc039049-0584-4cee-a3f6-0736d8b45056",
-          "processed_count": 1,
-          "failed_count": 0,
-          "total_entities_created": 2,
-          "total_relationships_created": 1,
-          "total_triplets_extracted": 1,
-          "results": [{
-            "source_data_id": "a4af367d-b141-4c3e-a525-75d27f8a296c",
-            "status": "success",
-            "entities_created": 2,
-            "relationships_created": 1,
-            "triplets_extracted": 1
-          }]
-        },
-        "error_message": null,
-        "metadata": {
-          "blueprint_id":"cc039049-0584-4cee-a3f6-0736d8b45056",
-          "source_data_count": 3
-        },
-        "execution_id": "1f12e7df-ef01-4037-9268-7688298dbfb0_GraphBuildTool",
-        "duration_seconds": 20.814152,
-        "timestamp": "2025-08-04T21:11:33.024326+00:00"
-      }
-    },
-    "pipeline": ["DocumentETLTool","BlueprintGenerationTool","GraphBuildTool"],
-    "duration_seconds": 56.450806
-  },
-  "error_message": null,
-  "metadata": {},
-  "execution_id": "1f12e7df-ef01-4037-9268-7688298dbfb0",
-  "duration_seconds": 56.450806,
-  "timestamp": "2025-08-04T21:11:33.384224+00:00"
+      "duration_seconds": 73.09505,
+      "error_message": null,
+      "execution_id": "6c274ea1-8202-4988-854d-38c2f7ae44af",
+      "metadata": {},
+      "success": true,
+      "timestamp": "2025-08-11T21:30:43.410736+00:00"
+    }
+  }
 }
 ```
 
 ### For JSON Input (`application/json`):
-
-**GET** `/api/v1/memory/status/`
-
-Get the status of a background memory processing task.
-
-**Example using curl (chat history):**
-
-```bash
-curl "http://localhost:8000/api/v1/memory/status/{task_id}"
-```
 
 **Parameters:**
 - `input`: The raw data to process - can be chat history array or any JSON data (required)
@@ -565,7 +616,7 @@ curl -X POST "http://localhost:8000/api/v1/save" \
 
 **Response (For memory processing):**
 
-- Successfully uploaded:
+- Upon Successful Uploading:
 
 ```json
 {
@@ -583,7 +634,7 @@ curl -X POST "http://localhost:8000/api/v1/save" \
   "execution_id": "upload_d390065f-4582-4a8e-b70e-b78269138617"}
 ```
 
-- Results after using `/api/v1/memory/status/`:
+- Final Result (Using `GET` method):
 
 ```json
 {

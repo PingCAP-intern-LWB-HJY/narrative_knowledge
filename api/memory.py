@@ -171,7 +171,7 @@ tools_wrapper = ToolsRouteWrapper()
 # Use database-based task tracking for persistence across workers
 
 
-def register_background_task(task_id: str, source_id: str, user_id: str, topic_name:str, message_count: int) -> None:
+def register_memory_background_task(task_id: str, source_id: str, user_id: str, topic_name:str, message_count: int) -> None:
     """Register a new background task immediately."""
     with SessionLocal() as db:
         task = BackgroundTask(
@@ -246,37 +246,7 @@ async def memory_background_processing(
                 db.commit()
         logger.error(f"Background processing failed: {e}")
 
-@router.get("/status/{task_id}")
-async def get_background_task_status(task_id: str) -> JSONResponse:
-    """
-    Get status of background processing task.
-    
-    Args:
-        task_id: Background task ID
-        
-    Returns:
-        JSON response with task status and results
-    """
-    SessionLocal = db_manager.get_session_factory()
-    
-    with SessionLocal() as db:
-        task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
-        
-        if not task:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Task {task_id} not found"
-            )
-        
-        # Return task status from database
-        return JSONResponse(
-            status_code=status.HTTP_200_OK, 
-            content={
-                "status": task.status,
-                "message": f"Task {task_id} status retrieved",
-                "data": task.to_dict()
-            }
-        )
+
 
 def _get_memory_system() -> PersonalMemorySystem:
     """Get initialized PersonalMemorySystem instance."""

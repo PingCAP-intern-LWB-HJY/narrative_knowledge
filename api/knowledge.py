@@ -7,7 +7,7 @@ import json
 import uuid
 import hashlib
 from pathlib import Path
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict, Any, Union
 from setting.db import SessionLocal, db_manager
 from sqlalchemy import or_, and_, func, case
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
@@ -22,6 +22,7 @@ from api.models import (
 )
 from knowledge_graph.models import (
     RawDataSource,
+    BackgroundTask,
 )
 
 logger = logging.getLogger(__name__)
@@ -796,39 +797,39 @@ async def list_topics(
             detail="Failed to retrieve topics",
         )
 
-# NOT IMPLEMENTED YET
-def register_file_background_task(task_id: str, build_id: str, topic_name: str, filename: str) -> None:
+def register_file_background_task(task_id: str, source_id: str, topic_name: str, file_count: int = 1) -> None:
     """Register a new background task for file processing immediately."""
     SessionLocal = db_manager.get_session_factory()
     with SessionLocal() as db:
-        from knowledge_graph.models import BackgroundTask
+
         task = BackgroundTask(
             id=task_id,
-            task_type="file_uploading",
-            source_id=build_id,
+            task_type="file_processing",
+            source_id=source_id,
             topic_name=topic_name,
-            status="processing"
+            status="processing",
+            message_count=file_count
         )
         db.add(task)
         db.commit()
 
-# NOT IMPLEMENTED YET
+
 async def file_background_processing(
-    files: List[UploadFile],
-    metadata: str,
-    links_list: List[str] = [],
-    process_strategy: Optional[Dict[str, Any]] = None,
+    files_data: List[UploadFile],
+    metadata: Dict[str, Any],
+    links_list: List[str],
+    process_strategy: Optional[Union[str, Dict[str, Any]]] = None,
     target_type: str = "knowledge_graph",
-    task_id: Optional[str] = None
+    task_id: Optional[str] = None,
+    source_id: Optional[str] = None,
 ) -> None:
     """
-    Trigger background processing for uploaded file after upload.
+    Trigger background processing for uploaded files after upload.
     
     Args:
-        files: Files to be uploaded
+        files_data: List of file data (filename, content, etc.)
         metadata: Request metadata
-        build_id: Unique identifier for the document
-        topic_name: Topic name for categorization
+        links_list: List of links for files
         target_type: Target processing type
         task_id: Optional task ID for tracking
     """
@@ -840,10 +841,10 @@ async def file_background_processing(
         
         tools_wrapper = ToolsRouteWrapper()
         
-        # Process the file
+        # Process the files
         result = tools_wrapper.process_upload_request(
-            files=files,
-            metadata=metadata if metadata is not None else {},
+            files=files_data,
+            metadata=metadata,
             process_strategy=process_strategy,
             target_type=target_type,
             links=links_list,
@@ -851,10 +852,11 @@ async def file_background_processing(
         
         # Update task status with success
         with SessionLocal() as db:
-            from knowledge_graph.models import BackgroundTask
+
             task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
             if task:
                 task.status = "completed"
+                task.source_id = source_id
                 task.result = result.to_dict() if hasattr(result, 'to_dict') else result
                 db.commit()
         
@@ -863,10 +865,11 @@ async def file_background_processing(
     except Exception as e:
         # Update task status with error
         with SessionLocal() as db:
-            from knowledge_graph.models import BackgroundTask
+
             task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
             if task:
                 task.status = "failed"
+                task.source_id = None
                 task.error = str(e)
                 db.commit()
         logger.error(f"File background processing failed: {e}")
