@@ -239,14 +239,14 @@ Enhanced endpoint for saving and processing data using the tools pipeline system
 - `multipart/form-data`: For file uploads
 - `application/json`: For JSON data input
 
-**GET** `/api/v1/status/`
+**GET** `/api/v1/tasks/`
 
 Get the status of a background processing task, either files uploading or memory processing.
 
 **Example using curl:**
 
 ```bash
-curl "http://localhost:8000/api/v1/status/{task_id}"
+curl "http://localhost:8000/api/v1/tasks/{task_id}"
 ```
 
 ### For File Uploads (`multipart/form-data`):
