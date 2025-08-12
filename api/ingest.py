@@ -586,7 +586,7 @@ async def save_data_pipeline(
         )
 
 
-@router.get("/status/{task_id}")
+@router.get("/tasks/{task_id}")
 async def get_background_task_status(task_id: str) -> JSONResponse:
     """
     Get status of background processing task.
