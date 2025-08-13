@@ -62,7 +62,7 @@ def _generate_build_id(filename: str, metadata: DocumentMetadata, external_datab
     doc_link = metadata.doc_link or ""
     topic_name = metadata.topic_name
     # Combine doc_link and external_database_uri for hash generation
-    combined_string = f"{filename}||{doc_link}||{external_database_uri}||{topic_name}"
+    combined_string = f"{filename}||{doc_link}||{external_database_uri}"
     logger.info(
         f"Generating build_id with filename: {filename}, doc_link: {doc_link}, topic_name: {topic_name}, external_database_uri: {external_database_uri}"
     )
@@ -337,7 +337,7 @@ def _create_processing_task(
             )
             db.add(build_status)
             db.commit()
-
+        logger.info(f"File {file.filename} successfully stored RawDataSource in database")
         if db_manager.is_local_mode(metadata.database_uri):
             logger.info(
                 f"Created local knowledge graph task: {build_id} in {storage_directory}"

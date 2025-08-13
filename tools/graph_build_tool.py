@@ -314,7 +314,7 @@ class GraphBuildTool(BaseTool):
                     )
 
                 # Check if already processed and not forcing reprocess
-                if not force_regenerate and source_data.status == "graph_completed":
+                if not force_regenerate and source_data.status == "graph_completed" and source_data.topic_name == blueprint.topic_name:
                     self.logger.info(f"SourceData already processed: {source_data_id}")
                     return ToolResult(
                         success=True,
@@ -436,7 +436,8 @@ class GraphBuildTool(BaseTool):
 
                 for source_data in source_data_list:
                     # Skip if already processed and not forcing reprocess
-                    if not force_regenerate and source_data.status == "graph_completed":
+                    if not force_regenerate and source_data.status == "graph_completed" and source_data.topic_name == blueprint.topic_name:
+                        self.logger.info(f"SourceData already processed: {source_data.id}")
                         continue
 
                     self.logger.info(f"Processing document: {source_data.id}")
@@ -679,7 +680,7 @@ class GraphBuildTool(BaseTool):
 
             # Get cognitive map for the document (if exists)
             cognitive_maps = self.cm_generator.get_cognitive_maps_for_topic(
-                source_data.topic_name  # type: ignore
+                blueprint.topic_name  # type: ignore
             )
             document_cognitive_map = {}
 
@@ -715,7 +716,7 @@ class GraphBuildTool(BaseTool):
 
             # Extract triplets using blueprint context
             triplets = self.graph_builder.extract_triplets_from_document(
-                source_data.topic_name,  # type: ignore
+                blueprint.topic_name,  # type: ignore
                 document,
                 blueprint,
                 document_cognitive_map,

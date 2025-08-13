@@ -57,7 +57,7 @@ class DatabaseManager:
             # Let SQLAlchemy handle all the complexity
             # It automatically handles: dependency order, IF NOT EXISTS behavior, 
             # all attributes, indexes, constraints, etc.
-            # Base.metadata.drop_all(bind=engine)
+            #Base.metadata.drop_all(bind=engine)
             Base.metadata.create_all(engine)
             logger.info("Successfully created/verified all tables in database")
                 

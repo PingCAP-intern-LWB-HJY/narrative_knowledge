@@ -478,11 +478,12 @@ class DocumentETLTool(BaseTool):
                 raw_data_source = (
                     db.query(RawDataSource)
                     .filter_by(
-                        original_filename=filename, topic_name=topic_name
+                        original_filename=filename
                     )
                     .first()
                 )
                 if not raw_data_source:
+                    self.logger.info(f"RawDataSource not found for {file_info['filename']} in topic {topic_name}")
                     return ToolResult(
                         success=False,
                         error_message=f"RawDataSource not found for {file_info['filename']} in topic {topic_name}",
@@ -510,8 +511,9 @@ class DocumentETLTool(BaseTool):
                     )
 
                     if existing_source_data:
+                        
                         self.logger.info(
-                            f"SourceData already exists for file: {file_path}"
+                            f"SourceData already exists for file: {file_path} in topic {existing_source_data.topic_name}"
                         )
                         return ToolResult(
                             success=True,

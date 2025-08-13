@@ -223,12 +223,23 @@ class BlueprintGenerationTool(BaseTool):
                     f"Retrieved {len(all_source_data)} source data records for topic: {topic_name}"
                 )
                 if source_data_ids:
-                    new_source_data_list = [
-                        sd for sd in all_source_data if sd.id in source_data_ids
-                    ]
+                    new_source_data_list = (
+                        db.query(SourceData)
+                        .filter(
+                            SourceData.id.in_(source_data_ids),
+                        )
+                        .order_by(SourceData.created_at)
+                        .all()
+                    )
                 else:
                     new_source_data_list = all_source_data
-
+                existing_ids = {item.id for item in all_source_data}
+                for item in new_source_data_list:
+                    if item.id not in existing_ids:
+                        all_source_data.append(item)
+                        self.logger.info(
+                            f"Added new source data: {item.id} - {item.name} to all_source_data"
+                        )
                 self.logger.info(
                     f"Retrieved new_source_data_list: {new_source_data_list}"
                 )
@@ -248,19 +259,21 @@ class BlueprintGenerationTool(BaseTool):
                 self.logger.info(
                     f"Calculated version hash for source_data_list: {version_hash}"
                 )
-                                # Ensure components are properly initialized
+                # Ensure components are properly initialized
                 if not self.cm_generator or not self.graph_builder:
                     raise ValueError("Required components not initialized")
 
                 if force_regenerate:
-                    documents = self._convert_source_data_to_documents(new_source_data_list)
+                    documents = self._convert_source_data_to_documents(
+                        new_source_data_list
+                    )
 
                     self.logger.info(
                         f"successfully converted {len(documents)} new source data records to documents for cognitive map generation"
                     )
                 else:
                     documents = self._convert_source_data_to_documents(all_source_data)
-                # Generate cognitive maps for all documents
+                    # Generate cognitive maps for all documents
                     self.logger.info(
                         f"successfully converted {len(documents)} all source data records to documents for cognitive map generation"
                     )
@@ -277,7 +290,7 @@ class BlueprintGenerationTool(BaseTool):
                     raise ValueError(
                         f"Failed to generate cognitive maps for topic: {topic_name}"
                     )
-
+                
                 # Generate analysis blueprint
 
                 blueprint_result = self.graph_builder.generate_analysis_blueprint(
@@ -292,7 +305,7 @@ class BlueprintGenerationTool(BaseTool):
                         .filter(AnalysisBlueprint.topic_name == topic_name)
                         .first()
                     )
-                    
+
                     blueprint.status = "ready"
                     blueprint.source_data_version_hash = version_hash
                     blueprint.contributing_source_data_ids = [
@@ -305,7 +318,7 @@ class BlueprintGenerationTool(BaseTool):
                     db.commit()
 
                 # Prepare summary
-               
+
                 summary = {
                     "canonical_entities_count": len(
                         processing_items.get("canonical_entities", {})

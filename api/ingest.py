@@ -104,7 +104,7 @@ async def _process_file_for_knowledge_graph(
 
 async def _store_and_get_build_id(
     file: UploadFile, metadata_str: str
-) -> tuple[Path, str, str, bool, ProcessedDocument]:
+) -> tuple[Path, str, str, Dict[str, Any]]:
     """Store file and return storage directory and build_id without processing."""
     try:
         metadata = json.loads(metadata_str)
@@ -146,7 +146,6 @@ async def _store_and_get_build_id(
             db.query(RawDataSource)
             .filter(
                 RawDataSource.id == build_id,
-                RawDataSource.topic_name == topic_name,
             )
             .first()
         )
@@ -170,7 +169,8 @@ async def _store_and_get_build_id(
         file_type=_get_file_type(Path(file.filename or "unknown")),
         status=status_msg,
     )
-    return storage_directory, build_id, topic_name, is_existing, processed_doc
+    processed_doc_dict = processed_doc.model_dump()
+    return storage_directory, build_id, topic_name, processed_doc_dict
 
 
 async def _process_json_for_personal_memory(
@@ -421,38 +421,15 @@ async def save_data_pipeline(
             single_metadata = copy.deepcopy(parsed_metadata)
             single_metadata["link"] = link
             
-            storage_dir, build_id, topic_name, is_existing, processed_doc = await _store_and_get_build_id(
+            storage_dir, build_id, topic_name, processed_doc = await _store_and_get_build_id(
                 file=file,
                 metadata_str=json.dumps(single_metadata),
             )
-            if is_existing:
-                error = f"File {file.filename} for topic {topic_name} already exists in the database. \
-                    You uploaded the same inputs as before. \
-                    Background processing failed for file '{file}'."
-                with SessionLocal() as db:
-                    task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
-                    if task:
-                        task.status = "failed"
-                        task.source_id = None
-                        task.error = str(error)
-                        db.commit()
-                return JSONResponse(
-                    status_code=404,
-                    content={
-                        "success": False,
-                        "message": error,
-                        "data": {
-                            "files_uploaded": 0,
-                            "task_id": task_id,
-                            "build_id": build_id,
-                            "topic_name": topic_name,
-                        },
-                    },
-                )
+            
             build_ids.append(build_id)
             storage_dirs.append(str(storage_dir))
-            processed_docs.append(processed_doc.dict())
-        
+            processed_docs.append(processed_doc)
+
         source_id = build_ids[0][:36] if build_ids else task_id
         
         # Start background processing without waiting

@@ -293,7 +293,7 @@ Generate the global blueprint for "{topic_name}"."""
         Returns all triplets with their source document information.
         """
         logger.info(
-            f"Processing document to extract triplets: {document['source_name']}"
+            f"Processing document to extract triplets: {document['source_name']} for topic {topic_name}"
         )
         # check whether the document is already processed with topic_name in SourceGraphMapping
         with self.SessionLocal() as db:
