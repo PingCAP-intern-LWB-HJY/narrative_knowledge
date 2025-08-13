@@ -313,7 +313,14 @@ class DocumentETLTool(BaseTool):
         """
         try:
             topic_name = input_data["topic_name"]
-            force_regenerate = input_data.get("force_regenerate", False)
+            force_regenerate_str = input_data.get("force_regenerate", False)
+
+            if force_regenerate_str == "True" or force_regenerate_str == "true":
+                force_regenerate = True
+            else:
+                force_regenerate = False
+
+            self.logger.info(f"Force regenerate? : {force_regenerate}")
 
             # Determine processing mode
             if "files" in input_data:
@@ -490,7 +497,7 @@ class DocumentETLTool(BaseTool):
                     )
                 file_path = raw_data_source.file_path
                 self.logger.info(
-                    "successfully found RawDataSource for file: %s", file_path
+                    "Successfully found RawDataSource for file: %s", file_path
                 )
                 # calculate file hash
                 with open(file_path, "rb") as f:
@@ -504,6 +511,8 @@ class DocumentETLTool(BaseTool):
                     f"ContentStore lookup for {file_path}: {content_store}"
                 )
                 if not force_regenerate:
+                    self.logger.info(f"Force regenerate? : {force_regenerate}")    
+
                     existing_source_data = (
                         db.query(SourceData)
                         .filter(SourceData.raw_data_source_id == raw_data_source.id)

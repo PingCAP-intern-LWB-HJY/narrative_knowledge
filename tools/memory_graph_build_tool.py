@@ -198,7 +198,14 @@ class MemoryGraphBuildTool(GraphBuildTool):
             source_id = input_data.get("source_id")
             chat_messages = input_data.get("chat_messages", [])
             user_id = input_data.get("user_id")
-            force_regenerate = input_data.get("force_regenerate", False)
+            force_regenerate_str = input_data.get("force_regenerate", False)
+
+            if force_regenerate_str == "True" or force_regenerate_str == "true":
+                force_regenerate = True
+            else:
+                force_regenerate = False
+
+            self.logger.info(f"Force regenerate? : {force_regenerate}")
 
             if not chat_messages:
                 return ToolResult(

@@ -204,7 +204,14 @@ class BlueprintGenerationTool(BaseTool):
             topic_name = input_data["topic_name"]
             source_data_ids = input_data.get("source_data_ids")
             self.logger.info("source_data_ids: %s", source_data_ids)
-            force_regenerate = input_data.get("force_regenerate", False)
+            force_regenerate_str = input_data.get("force_regenerate", False)
+
+            if force_regenerate_str == "True" or force_regenerate_str == "true":
+                force_regenerate = True
+            else:
+                force_regenerate = False
+                    
+            self.logger.info(f"Force regenerate? : {force_regenerate}")
 
             # Initialize components with provided clients
             self._initialize_components()

@@ -224,10 +224,17 @@ class GraphBuildTool(BaseTool):
         """
         try:
             self.logger.info("Starting GraphBuildTool execute")
-            force_regenerate = input_data.get("force_regenerate", False)
+            force_regenerate_str = input_data.get("force_regenerate", False)
             # Initialize components with provided clients
             self._initialize_components()
             self.logger.info("successfully initialized LLM client")
+
+            if force_regenerate_str == "True" or force_regenerate_str == "true":
+                force_regenerate = True
+            else:
+                force_regenerate = False
+
+            self.logger.info(f"Force regenerate? : {force_regenerate}")
 
             # Determine processing mode
             if "blueprint_id" in input_data and "source_data_id" in input_data:
