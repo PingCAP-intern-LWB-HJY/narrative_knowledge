@@ -143,7 +143,7 @@ class SourceData(Base):
         return self.content_hash
 
     __table_args__ = (
-        Index("uq_source_data_link", "link", unique=True),
+        Index("uq_source_data_link", "link"),
         Index("idx_source_data_name", "name"),
         Index("idx_source_data_topic", "topic_name"),
         Index("idx_source_data_status", "status"),
