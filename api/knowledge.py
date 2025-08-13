@@ -60,10 +60,11 @@ def _generate_build_id(filename: str, metadata: DocumentMetadata, external_datab
         SHA256 hash of the combined string
     """
     doc_link = metadata.doc_link or ""
+    topic_name = metadata.topic_name
     # Combine doc_link and external_database_uri for hash generation
-    combined_string = f"{filename}||{doc_link}||{external_database_uri}"
+    combined_string = f"{filename}||{doc_link}||{external_database_uri}||{topic_name}"
     logger.info(
-        f"Generating build_id with filename: {filename}, doc_link: {doc_link}, external_database_uri: {external_database_uri}"
+        f"Generating build_id with filename: {filename}, doc_link: {doc_link}, topic_name: {topic_name}, external_database_uri: {external_database_uri}"
     )
     # Generate SHA256 hash
     hash_object = hashlib.sha256(combined_string.encode("utf-8"))
