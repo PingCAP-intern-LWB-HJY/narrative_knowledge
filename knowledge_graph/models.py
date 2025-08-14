@@ -53,7 +53,8 @@ class RawDataSource(Base):
     file_path = Column(String(512), nullable=False)
     original_filename = Column(String(255), nullable=False)
     topic_name = Column(String(255), nullable=False)  # Key attribute for grouping
-    file_size = Column(BigInteger)
+    target_type = Column(String(50), nullable=False, default="knowledge_graph")  # 'knowledge_graph' or 'personal_memory'
+    process_strategy = Column(JSON, nullable=True)  # Processing strategy JSON
     file_hash = Column(String(64), nullable=False)  # SHA-256 hash of file content
     raw_data_source_metadata = Column(JSON, nullable=True)  # Custom metadata from upload
     

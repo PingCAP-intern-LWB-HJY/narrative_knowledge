@@ -103,7 +103,7 @@ async def _process_file_for_knowledge_graph(
 
 
 async def _store_and_get_build_id(
-    file: UploadFile, metadata_str: str
+    file: UploadFile, metadata_str: str, process_strategy: Dict[str, Any]
 ) -> tuple[Path, str, str, Dict[str, Any]]:
     """Store file and return storage directory and build_id without processing."""
     try:
@@ -146,6 +146,7 @@ async def _store_and_get_build_id(
             db.query(RawDataSource)
             .filter(
                 RawDataSource.id == build_id,
+                RawDataSource.topic_name == topic_name,
             )
             .first()
         )
@@ -153,12 +154,12 @@ async def _store_and_get_build_id(
             is_existing = True
 
     if is_existing:
-        status_msg = "already_exists"
+        status_msg = f"already_exists for topic {topic_name}"
         logger.info(
             f"File {file.filename} for topic {topic_name} already exists in the database."
         )
     else:
-        _create_processing_task(file, storage_directory, file_metadata, build_id)
+        _create_processing_task(file, storage_directory, file_metadata, build_id, process_strategy)
         status_msg = "uploaded"
 
     processed_doc = ProcessedDocument(
@@ -410,12 +411,7 @@ async def save_data_pipeline(
 
         # Register background task for entire batch
         topic_name = parsed_metadata.get("topic_name", "")
-        register_file_background_task(
-            task_id, 
-            task_id,
-            topic_name, 
-            len(files)
-        )
+
         
         for file, link in zip(files, links_list):
             single_metadata = copy.deepcopy(parsed_metadata)
@@ -424,26 +420,34 @@ async def save_data_pipeline(
             storage_dir, build_id, topic_name, processed_doc = await _store_and_get_build_id(
                 file=file,
                 metadata_str=json.dumps(single_metadata),
+                process_strategy=json.loads(process_strategy) if process_strategy else {}
             )
             
             build_ids.append(build_id)
             storage_dirs.append(str(storage_dir))
             processed_docs.append(processed_doc)
+            
+        # register_file_background_task(
+        #     task_id, 
+        #     task_id,
+        #     topic_name, 
+        #     len(files)
+        # )
 
         source_id = build_ids[0][:36] if build_ids else task_id
         
         # Start background processing without waiting
-        asyncio.create_task(
-            file_background_processing(
-                files_data=files,
-                metadata=parsed_metadata,
-                links_list=links_list,
-                process_strategy=process_strategy,
-                target_type=target_type,
-                task_id=task_id,
-                source_id=source_id,
-            )
-        )
+        # asyncio.create_task(
+        #     file_background_processing(
+        #         files_data=files,
+        #         metadata=parsed_metadata,
+        #         links_list=links_list,
+        #         process_strategy=process_strategy,
+        #         target_type=target_type,
+        #         task_id=task_id,
+        #         source_id=source_id,
+        #     )
+        # )
         
         return JSONResponse(
             status_code=200,

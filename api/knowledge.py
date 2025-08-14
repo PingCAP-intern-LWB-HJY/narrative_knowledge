@@ -62,7 +62,7 @@ def _generate_build_id(filename: str, metadata: DocumentMetadata, external_datab
     doc_link = metadata.doc_link or ""
     topic_name = metadata.topic_name
     # Combine doc_link and external_database_uri for hash generation
-    combined_string = f"{filename}||{doc_link}||{external_database_uri}"
+    combined_string = f"{filename}||{doc_link}||{external_database_uri}||{topic_name}"
     logger.info(
         f"Generating build_id with filename: {filename}, doc_link: {doc_link}, topic_name: {topic_name}, external_database_uri: {external_database_uri}"
     )
@@ -294,7 +294,7 @@ def _save_uploaded_file_with_metadata(
 
 
 def _create_processing_task(
-    file: UploadFile, storage_directory: Path, metadata: DocumentMetadata, build_id: str
+    file: UploadFile, storage_directory: Path, metadata: DocumentMetadata, build_id: str, process_strategy: Dict[str, Any] = {}
 ) -> None:
     """
     Create a background processing task for uploaded document.
@@ -328,6 +328,8 @@ def _create_processing_task(
         with SessionLocal() as db:
             build_status = RawDataSource(
                 topic_name=metadata.topic_name,
+                target_type= "knowledge_graph",  # Default target type TODO: make configurable
+                process_strategy=process_strategy,
                 id=build_id,
                 file_path=str(file_path),
                 file_hash=file_hash,
@@ -336,6 +338,7 @@ def _create_processing_task(
                 status="uploaded",
             )
             db.add(build_status)
+            logger.info(f"successfully created processing task for {file.filename} target: {build_status.target_type} process_strategy: {build_status.process_strategy}")
             db.commit()
         logger.info(f"File {file.filename} successfully stored RawDataSource in database")
         if db_manager.is_local_mode(metadata.database_uri):
