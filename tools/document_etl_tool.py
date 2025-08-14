@@ -515,7 +515,8 @@ class DocumentETLTool(BaseTool):
 
                     existing_source_data = (
                         db.query(SourceData)
-                        .filter(SourceData.raw_data_source_id == raw_data_source.id)
+                        .filter(SourceData.raw_data_source_id == raw_data_source.id,
+                                SourceData.topic_name == topic_name,)
                         .first()
                     )
 
