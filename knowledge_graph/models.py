@@ -49,7 +49,8 @@ class RawDataSource(Base):
 
     __tablename__ = "raw_data_sources"
 
-    id = Column(String(64), primary_key=True)
+    id = Column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    build_id = Column(String(64), nullable=False,index=True)
     file_path = Column(String(512), nullable=False)
     original_filename = Column(String(255), nullable=False)
     topic_name = Column(String(255), nullable=False)  # Key attribute for grouping
@@ -462,8 +463,8 @@ class BackgroundTask(Base):
     """Background task tracking for async processing across workers"""
 
     __tablename__ = "background_tasks"
-
-    id = Column(String(36), primary_key=True, nullable=False)
+    id = Column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    task_id = Column(String(64), nullable=False)
     task_type = Column(String(50), nullable=False)  # 'memory_processing', 'file_processing'
     source_id = Column(String(36), nullable=True)   # Related source_data ID
     user_id = Column(String(255), nullable=True)    # For personal memory

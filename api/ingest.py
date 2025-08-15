@@ -16,6 +16,7 @@ from setting.db import SessionLocal, db_manager
 import asyncio
 import copy
 import uuid
+import hashlib
 
 # Functions imported from api.knowledge for reuse
 from api.knowledge import (
@@ -402,7 +403,7 @@ async def save_data_pipeline(
         
 
         # Generate task ID for background processing tracking
-        task_id = str(uuid.uuid4())
+        
         
         # Store files and get build IDs using existing functions
         build_ids = []
@@ -433,6 +434,7 @@ async def save_data_pipeline(
         #     topic_name, 
         #     len(files)
         # )
+        task_id = hashlib.sha256(topic_name.encode("utf-8")).hexdigest()
 
         source_id = build_ids[0][:36] if build_ids else task_id
         
@@ -461,6 +463,7 @@ async def save_data_pipeline(
                     "topic_name": topic_name,
                     "processed_docs": processed_docs
                 },
+                "retrieval": f"/api/v1/tasks/{task_id}",
             },
         )
 
@@ -474,6 +477,7 @@ async def save_data_pipeline(
             chat_messages = body.get("input", [])
             metadata = body.get("metadata", {})
             user_id = metadata.get("user_id", "")
+            process_strategy=body.get("process_strategy")
             
             if not user_id:
                 raise HTTPException(
@@ -488,27 +492,27 @@ async def save_data_pipeline(
                 )
             
             # Store chat batch
-            store_result = await store_chat_batch(chat_messages, user_id)
+            store_result = await store_chat_batch(chat_messages, user_id, process_strategy, metadata)
             source_id = store_result["source_id"]
             topic_name = store_result["topic_name"]
             # Generate task ID for background processing tracking
             task_id = str(uuid.uuid4())
             
             # Register the task
-            register_memory_background_task(task_id, source_id, user_id, topic_name, len(chat_messages))
+            # register_memory_background_task(task_id, source_id, user_id, topic_name, len(chat_messages))
             
             # Start background processing without waiting
-            asyncio.create_task(
-                memory_background_processing(
-                    chat_messages=chat_messages,
-                    user_id=user_id,
-                    source_id=source_id,
-                    topic_name=topic_name,
-                    process_strategy=body.get("process_strategy"),
-                    target_type=target_type,
-                    task_id=task_id,
-                )
-            )
+            # asyncio.create_task(
+            #     memory_background_processing(
+            #         chat_messages=chat_messages,
+            #         user_id=user_id,
+            #         source_id=source_id,
+            #         topic_name=topic_name,
+            #         process_strategy=process_strategy,
+            #         target_type=target_type,
+            #         task_id=task_id,
+            #     )
+            # )
             
             # Return confirmation with task ID
             return JSONResponse(
@@ -581,8 +585,8 @@ async def get_background_task_status(task_id: str) -> JSONResponse:
     SessionLocal = db_manager.get_session_factory()
     
     with SessionLocal() as db:
-        task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
-        
+        task = db.query(BackgroundTask).filter(BackgroundTask.task_id == task_id).first()
+
         if not task:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

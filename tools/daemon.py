@@ -1,7 +1,7 @@
 import logging
 import time
 import json
-import uuid
+import hashlib
 from collections import defaultdict
 from typing import Dict, Any, Optional, Generator
 from setting.db import SessionLocal
@@ -22,7 +22,7 @@ class PipelineDaemon:
     based on the provided configuration and context.
     """
 
-    def __init__(self, check_interval: int = 60):
+    def __init__(self, check_interval: int = 10):
         """
         Initialize the PipelineDaemon.
 
@@ -46,7 +46,7 @@ class PipelineDaemon:
                 result = self._process_uploaded_files()
                 if result:
                     logger.info(f"Processed files result: {result}")
-                    self.is_running = False  # Stop after processing files
+                    # self.is_running = False  # Stop after processing files
             except Exception as e:
                 logger.error(f"Error in daemon main loop: {e}", exc_info=True)
 
@@ -65,7 +65,7 @@ class PipelineDaemon:
         with SessionLocal() as db:
 
             task = BackgroundTask(
-                id=task_id,
+                task_id=task_id,
                 task_type="file_processing",
                 topic_name=topic_name,
                 status="processing",
@@ -113,7 +113,7 @@ class PipelineDaemon:
                 content_type = None
 
                 if rds.raw_data_source_metadata:
-                    link = rds.raw_data_source_metadata.get("link")
+                    link = rds.raw_data_source_metadata.get("doc_link")
                     content_type = rds.raw_data_source_metadata.get("content_type")
 
                 context["files"].append({
@@ -123,7 +123,8 @@ class PipelineDaemon:
                     "content_type": content_type
                 })
             logger.info(f"Context prepared for topic '{topic_name}': {len(context['files'])} files")
-            execution_id = str(uuid.uuid4())
+            execution_id = hashlib.sha256(topic_name.encode("utf-8")).hexdigest()
+            logger.info(f"Execution ID for topic '{topic_name}': {execution_id}")
             try:
                 self.register_file_background_task(
                     task_id=execution_id,

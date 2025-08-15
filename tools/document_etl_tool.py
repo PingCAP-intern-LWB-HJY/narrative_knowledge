@@ -485,7 +485,8 @@ class DocumentETLTool(BaseTool):
                 raw_data_source = (
                     db.query(RawDataSource)
                     .filter_by(
-                        original_filename=filename
+                        original_filename=filename,
+                        status="uploaded"
                     )
                     .first()
                 )

@@ -91,6 +91,7 @@ class NarrativeKnowledgeGraphBuilder:
         topic_name: str,
         cognitive_maps: List[Dict],
         force_regenerate: bool = False,
+        rate_limit: Optional[float] = None
     ) -> AnalysisBlueprint:
         """
         Stage 2: Generate Global Blueprint & Instructions for cross-document coordination.
@@ -104,6 +105,16 @@ class NarrativeKnowledgeGraphBuilder:
         - Conflict resolution strategies
         - Unified timeline integration
         """
+        if rate_limit is not None and rate_limit <= 0.15:
+            with self.SessionLocal() as db:
+                existing_blueprint = db.query(AnalysisBlueprint).filter(
+                        AnalysisBlueprint.topic_name == topic_name
+                    ).order_by(
+                        AnalysisBlueprint.created_at.desc()
+                    ).first()
+            if existing_blueprint:
+                logger.info("existing blueprint is enough, reuse it")
+                return existing_blueprint
         if len(cognitive_maps) == 0:
             raise ValueError(f"No cognitive maps found for topic: {topic_name}")
         # Enhanced Global Blueprint Generation Prompt

@@ -62,7 +62,7 @@ def _generate_build_id(filename: str, metadata: DocumentMetadata, external_datab
     doc_link = metadata.doc_link or ""
     topic_name = metadata.topic_name
     # Combine doc_link and external_database_uri for hash generation
-    combined_string = f"{filename}||{doc_link}||{external_database_uri}||{topic_name}"
+    combined_string = f"{filename}||{doc_link}||{external_database_uri}||"
     logger.info(
         f"Generating build_id with filename: {filename}, doc_link: {doc_link}, topic_name: {topic_name}, external_database_uri: {external_database_uri}"
     )
@@ -330,7 +330,7 @@ def _create_processing_task(
                 topic_name=metadata.topic_name,
                 target_type= "knowledge_graph",  # Default target type TODO: make configurable
                 process_strategy=process_strategy,
-                id=build_id,
+                build_id=build_id,
                 file_path=str(file_path),
                 file_hash=file_hash,
                 original_filename=file.filename,

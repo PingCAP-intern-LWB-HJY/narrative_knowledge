@@ -256,6 +256,7 @@ class BlueprintGenerationTool(BaseTool):
                         success=False,
                         error_message=f"No source data found for topic: {topic_name}",
                     )
+                rate: float = len(new_source_data_list) / len(all_source_data)
 
                 # Calculate version hash from all source data versions
                 version_input = "|".join(
@@ -285,23 +286,23 @@ class BlueprintGenerationTool(BaseTool):
                         f"successfully converted {len(documents)} all source data records to documents for cognitive map generation"
                     )
             try:
-
-                cognitive_maps = self.cm_generator.batch_generate_cognitive_maps(
-                    topic_name, documents, force_regenerate=force_regenerate
-                )
-                self.logger.info(
-                    f"successfully generated cognitive maps {cognitive_maps}"
-                )
-
-                if not cognitive_maps:
-                    raise ValueError(
-                        f"Failed to generate cognitive maps for topic: {topic_name}"
+                  # Ensure cognitive_maps is always defined
+                if rate > 0.15:
+                    self.logger.info(
+                        f"Rate {rate} is greater than 0.15, will generate cognitive maps for all documents"
                     )
-                
+                    cognitive_maps = self.cm_generator.batch_generate_cognitive_maps(
+                        topic_name, documents, force_regenerate=force_regenerate
+                    )
+                    self.logger.info(
+                        f"successfully generated cognitive maps {cognitive_maps}"
+                    )
+                else:
+                    self.logger.info("Rate is lower than 0.15, skipping cognitive map generation")
+                    cognitive_maps: List[Dict] = []
                 # Generate analysis blueprint
-
                 blueprint_result = self.graph_builder.generate_analysis_blueprint(
-                    topic_name, cognitive_maps, force_regenerate=force_regenerate
+                    topic_name, cognitive_maps, force_regenerate=force_regenerate, rate_limit=rate
                 )
                 self.logger.info(f"Generated blueprint result: {blueprint_result}")
 
