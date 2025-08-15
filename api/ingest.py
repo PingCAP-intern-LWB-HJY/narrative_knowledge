@@ -474,6 +474,7 @@ async def save_data_pipeline(
             chat_messages = body.get("input", [])
             metadata = body.get("metadata", {})
             user_id = metadata.get("user_id", "")
+            process_strategy=body.get("process_strategy")
             
             if not user_id:
                 raise HTTPException(
@@ -488,27 +489,27 @@ async def save_data_pipeline(
                 )
             
             # Store chat batch
-            store_result = await store_chat_batch(chat_messages, user_id)
+            store_result = await store_chat_batch(chat_messages, user_id, process_strategy, metadata)
             source_id = store_result["source_id"]
             topic_name = store_result["topic_name"]
             # Generate task ID for background processing tracking
             task_id = str(uuid.uuid4())
             
             # Register the task
-            register_memory_background_task(task_id, source_id, user_id, topic_name, len(chat_messages))
+            # register_memory_background_task(task_id, source_id, user_id, topic_name, len(chat_messages))
             
             # Start background processing without waiting
-            asyncio.create_task(
-                memory_background_processing(
-                    chat_messages=chat_messages,
-                    user_id=user_id,
-                    source_id=source_id,
-                    topic_name=topic_name,
-                    process_strategy=body.get("process_strategy"),
-                    target_type=target_type,
-                    task_id=task_id,
-                )
-            )
+            # asyncio.create_task(
+            #     memory_background_processing(
+            #         chat_messages=chat_messages,
+            #         user_id=user_id,
+            #         source_id=source_id,
+            #         topic_name=topic_name,
+            #         process_strategy=process_strategy,
+            #         target_type=target_type,
+            #         task_id=task_id,
+            #     )
+            # )
             
             # Return confirmation with task ID
             return JSONResponse(

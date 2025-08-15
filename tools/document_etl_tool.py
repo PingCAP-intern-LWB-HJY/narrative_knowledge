@@ -485,7 +485,8 @@ class DocumentETLTool(BaseTool):
                 raw_data_source = (
                     db.query(RawDataSource)
                     .filter_by(
-                        original_filename=filename
+                        original_filename=filename,
+                        status="uploaded"
                     )
                     .first()
                 )
@@ -521,7 +522,7 @@ class DocumentETLTool(BaseTool):
                     )
 
                     if existing_source_data:
-                        
+                        raw_data_source.status = "etl_completed"
                         self.logger.info(
                             f"SourceData already exists for file: {file_path} in topic {existing_source_data.topic_name}"
                         )

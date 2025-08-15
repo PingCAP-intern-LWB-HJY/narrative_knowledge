@@ -6,7 +6,7 @@ import hashlib
 import uuid
 from datetime import datetime
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -17,7 +17,7 @@ from llm.factory import LLMInterface
 from llm.embedding import get_text_embedding
 from setting.db import db_manager, SessionLocal
 from setting.base import LLM_MODEL, LLM_PROVIDER
-from knowledge_graph.models import SourceData, ContentStore, BackgroundTask
+from knowledge_graph.models import RawDataSource, SourceData, ContentStore, BackgroundTask
 from tools.route_wrapper import ToolsRouteWrapper
 
 
@@ -48,6 +48,8 @@ def generate_topic_name_for_personal_memory(user_id: str) -> str:
 async def store_chat_batch(
     chat_messages: List[Dict[str, Any]],
     user_id: str,
+    process_strategy: Optional[Dict[str, Any]],
+    metadata: Union[str, Dict[str, Any]]
 ) -> Dict[str, Any]:
     """
     Store chat batch as SourceData without processing - Phase 1.
@@ -82,7 +84,7 @@ async def store_chat_batch(
         "topic_name": topic_name,
         "batch_type": "chat_messages",
         "message_count": len(chat_messages),
-        "session_id": chat_messages[0].get("session_id", "") if chat_messages else "",
+        "session_id": metadata.get("session_id", "") if chat_messages else "",
         "conversation_title": chat_messages[0].get("conversation_title", "") if chat_messages else "",
         "last_message_date": batch_timestamp,
         "processing_status": "pending",  # Mark as pending for processing
@@ -138,7 +140,7 @@ async def store_chat_batch(
                 f"Reusing existing content store entry with hash: {content_hash[:8]}..."
             )
         
-        # Create source data
+        # Create source data & raw data source
         source_data = SourceData(
             name=f"chat_batch_{user_id}_{batch_timestamp}",
             link=chat_link,
@@ -151,9 +153,28 @@ async def store_chat_batch(
         db.add(source_data)
         db.commit()
         db.refresh(source_data)
+        
+        raw_data_source = RawDataSource(
+            topic_name=topic_name,
+            target_type= "personal_memory",
+            process_strategy=process_strategy,
+            id=source_data.id,
+            file_path=chat_link,
+            file_hash=content_hash,
+            original_filename=f"chat_batch_{user_id}_{batch_timestamp}",
+            raw_data_source_metadata={
+                "chat_messages": chat_messages,
+                "metadata": metadata,
+            },
+            status="uploaded",
+        )
+        
+        db.add(raw_data_source)
+        db.commit()
+        db.refresh(raw_data_source)
         db.refresh(content_store)
         
-        logger.info(f"Stored chat batch as SourceData: {source_data.id}")
+        logger.info(f"Stored chat batch as SourceData: {source_data.id} and RawDataSource: {raw_data_source.id}")
         
         return {
             "status": "uploaded",
