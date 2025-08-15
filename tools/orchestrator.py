@@ -36,7 +36,7 @@ class PipelineOrchestrator:
         # Define standard pipelines using tool keys
         self.standard_pipelines = {
             # Knowledge graph pipelines
-            "single_doc_existing_topic": ["etl", "graph_build"],
+            "single_doc_existing_topic": ["etl", "blueprint_gen", "graph_build"],
             "batch_doc_existing_topic": ["etl", "blueprint_gen", "graph_build"],
             "new_topic_batch": ["etl", "blueprint_gen", "graph_build"],
             "text_to_graph": ["graph_build"],

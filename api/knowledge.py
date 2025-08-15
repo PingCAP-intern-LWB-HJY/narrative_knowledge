@@ -329,7 +329,7 @@ def _create_processing_task(
             build_status = RawDataSource(
                 topic_name=metadata.topic_name,
                 target_type= "knowledge_graph",  # Default target type TODO: make configurable
-                process_strategy=process_strategy,
+                process_strategy=process_strategy or {},
                 build_id=build_id,
                 file_path=str(file_path),
                 file_hash=file_hash,
