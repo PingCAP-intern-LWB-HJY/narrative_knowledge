@@ -96,6 +96,68 @@ class PipelineOrchestrator:
 
             self.logger.warning(f"Traceback: {traceback.format_exc()}")
 
+    def execute_with_process_strategy(
+        self, context: Dict[str, Any], execution_id: Optional[str] = None
+    ) -> ToolResult:
+        """
+        Execute pipeline based on process strategy parameter from API request.
+
+        Args:
+            context: API request data containing process_strategy
+            execution_id: Optional execution ID
+
+        Returns:
+            ToolResult with execution results
+        """
+        execution_id = execution_id or str(uuid.uuid4())
+
+        process_strategy = context.get("process_strategy", {})
+        target_type = context.get("target_type", {})
+        metadata = context.get("metadata", {})
+
+        # Explicit pipeline execution
+        if "pipeline" in process_strategy:
+            if "knowledge_graph" in target_type:
+                pipeline = process_strategy["pipeline"]
+                self.logger.info(
+                    f"We have process_strategy, with target_type '{target_type}' and specific pipelines: {pipeline}"
+                )
+                try:
+                    tools = [self.tool_key_mapping[key] for key in pipeline]
+                except KeyError as e:
+                    return ToolResult(
+                        success=False,
+                        error_message=f"Invalid tool key {e} in pipeline configuration",
+                    )
+                return self.execute_custom_pipeline(tools, context, execution_id)
+            elif "personal_memory" in target_type:
+                tools = ["MemoryGraphBuildTool"]
+                # Tell the user we still use MemoryGraphBuildTool even though process_strategy is provided
+                self.logger.info(
+                    f"We have process_strategy with target_type '{target_type}'. Using tool '{tools}'"
+                )
+                return self.execute_custom_pipeline(tools, context, execution_id)
+
+        # Default pipeline selection
+        topic_name = context.get("topic_name", "")
+        file_count = len(context.get("files", []))
+        is_new_topic = self._determine_is_new_topic(metadata, target_type, topic_name)
+        self.logger.info(f"Using new topic? (True/False): {is_new_topic}")
+
+        # Determine input type and context
+        input_type = "dialogue" if target_type == "personal_memory" else "document"
+        if isinstance(context.get("input"), str) and not context.get("files"):
+            input_type = "text"
+
+        self.logger.info(f"Input type is: {input_type}")
+        pipeline_name = self.select_default_pipeline(
+            target_type, topic_name, file_count, is_new_topic, input_type=input_type
+        )
+
+        self.logger.info(f"Using pipeline name: {pipeline_name}")
+
+        return self.execute_pipeline(pipeline_name, context, execution_id)
+
     def execute_pipeline(
         self,
         pipeline_name: str,
@@ -150,7 +212,7 @@ class PipelineOrchestrator:
         self.logger.info(f"Starting pipeline execution: {execution_id} - {tools}")
 
         results = {}
-        # 
+        
         pipeline_context = context.copy()
 
         try:
@@ -461,63 +523,37 @@ class PipelineOrchestrator:
 
             return blueprint.id if blueprint else None
 
-    def execute_with_process_strategy(
-        self, context: Dict[str, Any], execution_id: Optional[str] = None
-    ) -> ToolResult:
+    def _determine_is_new_topic(self, metadata: Dict[str, Any], target_type: str, topic_name: str) -> bool:
         """
-        Execute pipeline based on process strategy parameter from API request.
+        Determine if this is a new topic based on metadata and target type.
 
         Args:
-            context: API request data containing process_strategy
-            execution_id: Optional execution ID
+            metadata: Request metadata
+            target_type: Target type (knowledge_graph or personal_memory)
 
         Returns:
-            ToolResult with execution results
+            True if new topic, False if existing, or default for memory processing
         """
-        execution_id = execution_id or str(uuid.uuid4())
+        if target_type == "personal_memory":
+            return False
+        
+        # First check explicit metadata flag
+        explicit_is_new_topic = metadata.get("is_new_topic")
+        if explicit_is_new_topic is not None:
+            return bool(explicit_is_new_topic)
 
-        process_strategy = context.get("process_strategy", {})
-        target_type = context.get("target_type", {})
-        metadata = context.get("metadata", {})
+        # Determine from database if topic exists
+        from setting.db import SessionLocal
+        from knowledge_graph.models import SourceData
 
-        # Explicit pipeline execution
-        if "pipeline" in process_strategy:
-            if "knowledge_graph" in target_type:
-                pipeline = process_strategy["pipeline"]
-                self.logger.info(
-                    f"We have process_strategy, with target_type '{target_type}' and specific pipelines: {pipeline}"
+        if topic_name:
+            with SessionLocal() as db:
+                existing_count = (
+                    db.query(SourceData)
+                    .filter(SourceData.topic_name == topic_name)
+                    .count()
                 )
-                try:
-                    tools = [self.tool_key_mapping[key] for key in pipeline]
-                except KeyError as e:
-                    return ToolResult(
-                        success=False,
-                        error_message=f"Invalid tool key {e} in pipeline configuration",
-                    )
-                return self.execute_custom_pipeline(tools, context, execution_id)
-            elif "personal_memory" in target_type:
-                tools = ["MemoryGraphBuildTool"]
-                # Tell the user we still use MemoryGraphBuildTool even though process_strategy is provided
-                self.logger.info(
-                    f"We have process_strategy with target_type '{target_type}'. Using tool '{tools}'"
-                )
-                return self.execute_custom_pipeline(tools, context, execution_id)
-
-        # Default pipeline selection
-        topic_name = metadata.get("topic_name")
-        file_count = len(context.get("files", []))
-        is_new_topic = context.get("is_new_topic", False)
-
-        # Determine input type and context
-        input_type = "dialogue" if target_type == "personal_memory" else "document"
-        if isinstance(context.get("input"), str) and not context.get("files"):
-            input_type = "text"
-
-        self.logger.info(f"Input type is: {input_type}")
-        pipeline_name = self.select_default_pipeline(
-            target_type, topic_name, file_count, is_new_topic, input_type=input_type
-        )
-
-        self.logger.info(f"Using pipeline name: {pipeline_name}")
-
-        return self.execute_pipeline(pipeline_name, context, execution_id)
+                return existing_count == 0
+        else:
+            # No topic name provided, assume new topic for documents
+            return True

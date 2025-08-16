@@ -580,7 +580,8 @@ curl -X POST "http://localhost:8000/api/v1/save" \
     ],
     "metadata": {
       "user_id": "user123",
-      "session_id": "session_456"
+      "session_id": "session_456",
+      "force_regenerate": "True"
     },
     "target_type": "personal_memory",
     "process_strategy": {
@@ -724,6 +725,36 @@ curl -X POST "http://localhost:8000/api/v1/save" \
   "duration_seconds": 14.42
 }
 ```
+
+### Pipeline Daemon Process
+
+The pipeline daemon process (`tools/daemon.py`) runs in the background to automatically process documents and memory data. It periodically checks for new tasks and executes the appropriate processing pipeline.
+
+### Usage
+
+```bash
+# Default (--mode files --interval 5)
+python tools/daemon.py
+
+# Run daemon for processing uploaded files
+python tools/daemon.py --mode files --interval 20
+
+# Run daemon for processing memory/chat messages  
+python tools/daemon.py --mode memory --interval 10
+
+```
+
+### Arguments
+
+- `--mode`: Processing mode - `"files"` for uploaded documents or `"memory"` for chat/memory data (default: `files`)
+- `--interval`: Check interval in seconds (default: 5)
+
+### How it Works
+
+The daemon continuously monitors the database for:
+- **Files mode**: Pending uploaded documents that need processing through the ETL → Blueprint → GraphBuild pipeline
+- **Memory mode**: Unprocessed chat/memory batches for knowledge graph building
+
 
 ### Relavant Settings for testing
 - **LLM Client**: Currently use default `llm_client` as `openai` with model `gpt-4o`

@@ -324,7 +324,7 @@ class DocumentETLTool(BaseTool):
 
             # Determine processing mode
             if "files" in input_data:
-                # Batch processing
+                # Single/Batch processing
                 files = input_data["files"]
                 request_metadata = input_data.get("request_metadata", {})
                 return self._process_batch_files(
@@ -522,7 +522,7 @@ class DocumentETLTool(BaseTool):
                     )
 
                     if existing_source_data:
-                        
+                        raw_data_source.status = "etl_completed"
                         self.logger.info(
                             f"SourceData already exists for file: {file_path} in topic {existing_source_data.topic_name}"
                         )

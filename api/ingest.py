@@ -401,9 +401,6 @@ async def save_data_pipeline(
         else:
             links_list = [f"file://links/{file.filename}" for file in files]
         
-
-        # Generate task ID for background processing tracking
-        
         
         # Store files and get build IDs using existing functions
         build_ids = []
@@ -417,6 +414,7 @@ async def save_data_pipeline(
         for file, link in zip(files, links_list):
             single_metadata = copy.deepcopy(parsed_metadata)
             single_metadata["link"] = link
+            single_metadata["content_type"] = file.content_type
             
             storage_dir, build_id, topic_name, processed_doc = await _store_and_get_build_id(
                 file=file,
@@ -434,6 +432,8 @@ async def save_data_pipeline(
         #     topic_name, 
         #     len(files)
         # )
+
+        # Generate task ID for background processing tracking
         task_id = hashlib.sha256(topic_name.encode("utf-8")).hexdigest()
 
         source_id = build_ids[0][:36] if build_ids else task_id
@@ -463,7 +463,7 @@ async def save_data_pipeline(
                     "topic_name": topic_name,
                     "processed_docs": processed_docs
                 },
-                "retrieval": f"/api/v1/tasks/{task_id}",
+                "retrieval": f"curl 'http://localhost:8000/api/v1/tasks/{task_id}'",
             },
         )
 
@@ -477,7 +477,7 @@ async def save_data_pipeline(
             chat_messages = body.get("input", [])
             metadata = body.get("metadata", {})
             user_id = metadata.get("user_id", "")
-            process_strategy=body.get("process_strategy")
+            process_strategy = body.get("process_strategy")
             
             if not user_id:
                 raise HTTPException(
@@ -496,7 +496,7 @@ async def save_data_pipeline(
             source_id = store_result["source_id"]
             topic_name = store_result["topic_name"]
             # Generate task ID for background processing tracking
-            task_id = str(uuid.uuid4())
+            task_id = hashlib.sha256(topic_name.encode("utf-8")).hexdigest()
             
             # Register the task
             # register_memory_background_task(task_id, source_id, user_id, topic_name, len(chat_messages))
@@ -529,7 +529,7 @@ async def save_data_pipeline(
                         "phase": "stored",
                         "task_id": task_id
                     },
-                    "execution_id": f"upload_{source_id}",
+                    "retrieval": f"curl 'http://localhost:8000/api/v1/tasks/{task_id}'",
                 },
             )
         
@@ -585,20 +585,20 @@ async def get_background_task_status(task_id: str) -> JSONResponse:
     SessionLocal = db_manager.get_session_factory()
     
     with SessionLocal() as db:
-        task = db.query(BackgroundTask).filter(BackgroundTask.task_id == task_id).first()
-
-        if not task:
+        task_list = db.query(BackgroundTask).filter(BackgroundTask.task_id == task_id).all()
+        
+        if not task_list:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Task {task_id} not found"
             )
         
-        # Return task status from database
+        # Return all tasks with the same task_id from database
         return JSONResponse(
             status_code=status.HTTP_200_OK, 
             content={
-                "status": task.status,
-                "message": f"Task {task_id} status retrieved",
-                "data": task.to_dict()
+                "status": "success",
+                "message": f"Found {len(task_list)} task(s) with ID {task_id}",
+                "data": [task.to_dict() for task in task_list]
             }
         )
