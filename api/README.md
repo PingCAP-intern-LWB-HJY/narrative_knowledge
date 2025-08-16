@@ -730,7 +730,7 @@ curl -X POST "http://localhost:8000/api/v1/save" \
 
 The pipeline daemon process (`tools/daemon.py`) runs in the background to automatically process documents and memory data. It periodically checks for new tasks and executes the appropriate processing pipeline.
 
-### Usage
+#### Usage
 
 ```bash
 # Default (--mode files --interval 5)
@@ -744,12 +744,12 @@ python tools/daemon.py --mode memory --interval 10
 
 ```
 
-### Arguments
+#### Arguments
 
 - `--mode`: Processing mode - `"files"` for uploaded documents or `"memory"` for chat/memory data (default: `files`)
 - `--interval`: Check interval in seconds (default: 5)
 
-### How it Works
+#### How it Works
 
 The daemon continuously monitors the database for:
 - **Files mode**: Pending uploaded documents that need processing through the ETL → Blueprint → GraphBuild pipeline
