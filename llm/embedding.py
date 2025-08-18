@@ -8,6 +8,13 @@ import hashlib
 import math
 from typing import List
 
+# Fix proxy issues for localhost connections
+os.environ['NO_PROXY'] = '127.0.0.1,localhost'
+
+# Disable proxy environment variables
+for proxy_var in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
+    os.environ.pop(proxy_var, None)
+
 def get_text_embedding(text: str):
     embedding_model = openai.OpenAI(
         base_url=EMBEDDING_BASE_URL,

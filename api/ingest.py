@@ -146,7 +146,7 @@ async def _store_and_get_build_id(
         build_status = (
             db.query(RawDataSource)
             .filter(
-                RawDataSource.id == build_id,
+                RawDataSource.build_id == build_id,
                 RawDataSource.topic_name == topic_name,
             )
             .first()
@@ -160,6 +160,7 @@ async def _store_and_get_build_id(
             f"File {file.filename} for topic {topic_name} already exists in the database."
         )
     else:
+        logger.info(f"File {file.filename} for topic {topic_name} is being uploaded.")
         _create_processing_task(file, storage_directory, file_metadata, build_id, process_strategy)
         status_msg = "uploaded"
 

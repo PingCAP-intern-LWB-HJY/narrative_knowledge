@@ -46,7 +46,7 @@ class NarrativeKnowledgeGraphBuilder:
             session_factory: Database session factory. If None, uses default SessionLocal.
         """
         self.llm_client = llm_client
-        self.embedding_func = text_based_mock_embedding
+        self.embedding_func = get_text_embedding if embedding_func is None else embedding_func
         self.SessionLocal = session_factory or SessionLocal
         self._quality_standard = self._load_quality_standard()
 
@@ -781,6 +781,9 @@ Begin your detective work and discover the hidden knowledge!
                                         "topic_name": triplet["topic_name"],
                                         "category": triplet["category"],
                                     },
+                                )
+                                logger.info(
+                                    f"successfully embedded subject entity: {subject_name} by {self.embedding_func.__name__}"
                                 )
                                 db.add(subject_entity)
                                 db.flush()

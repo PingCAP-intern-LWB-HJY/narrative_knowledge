@@ -15,7 +15,7 @@ from knowledge_graph.graph import NarrativeKnowledgeGraphBuilder
 from knowledge_graph.congnitive_map import DocumentCognitiveMapGenerator
 from setting.db import SessionLocal
 from llm.factory import LLMInterface
-from llm.embedding import get_text_embedding, text_based_mock_embedding
+from llm.embedding import get_text_embedding
 
 
 class GraphBuildTool(BaseTool):
@@ -45,7 +45,7 @@ class GraphBuildTool(BaseTool):
         self,
         session_factory=None,
         llm_client=LLMInterface("openai", model="gpt-4o"),
-        embedding_func=text_based_mock_embedding or get_text_embedding,
+        embedding_func=get_text_embedding,
         worker_count: int = 3,
     ):
         super().__init__(session_factory=session_factory)

@@ -14,7 +14,7 @@ OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 # need 4096 dimension embedding for knowledge graph, fix it later
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "hf.co/Qwen/Qwen3-Embedding-8B-GGUF:Q8_0")
-EMBEDDING_BASE_URL = os.environ.get("EMBEDDING_BASE_URL", "http://localhost:11434/v1/")
+EMBEDDING_BASE_URL = os.environ.get("EMBEDDING_BASE_URL", "http://127.0.0.1:11434/v1")
 EMBEDDING_MODEL_API_KEY = os.environ.get("EMBEDDING_MODEL_API_KEY", "ollama")
 
 # DB settings
