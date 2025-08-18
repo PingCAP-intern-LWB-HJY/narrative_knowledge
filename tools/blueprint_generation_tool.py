@@ -51,7 +51,7 @@ class BlueprintGenerationTool(BaseTool):
         super().__init__(session_factory=session_factory)
         self.session_factory = session_factory or SessionLocal
         self.llm_client = llm_client
-        self.embedding_func = embedding_func or get_text_embedding
+        self.embedding_func = get_text_embedding if embedding_func is None else embedding_func
 
         # Initialize components
         self.cm_generator: Optional[DocumentCognitiveMapGenerator] = None

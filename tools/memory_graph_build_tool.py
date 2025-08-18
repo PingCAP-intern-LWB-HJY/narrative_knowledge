@@ -13,7 +13,7 @@ from tools.graph_build_tool import GraphBuildTool
 from memory_system import PersonalMemorySystem, generate_topic_name_for_personal_memory
 from knowledge_graph.models import SourceData, AnalysisBlueprint
 from llm.factory import LLMInterface
-from llm.embedding import get_text_embedding, text_based_mock_embedding
+from llm.embedding import get_text_embedding
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class MemoryGraphBuildTool(GraphBuildTool):
         self, 
         session_factory=None, 
         llm_client=LLMInterface("openai", model="gpt-4o"),
-        embedding_func=text_based_mock_embedding or get_text_embedding,
+        embedding_func=get_text_embedding,
     ):
         super().__init__(session_factory)
         self.memory_system = None

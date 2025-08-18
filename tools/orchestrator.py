@@ -104,6 +104,25 @@ class PipelineOrchestrator:
 
         Args:
             context: API request data containing process_strategy
+            1. knowledge_graph context:
+                - "target_type": "knowledge_graph"
+                - "process_strategy" (optional)
+                - "metadata"[Dict]: input_metadata
+                - "files"[List]: contains "filename", "metadata"(file-specific), "link", "content_type", "title", "author", etc.
+                - "force_regenerate" (optional): boolean
+                - "topic_name"
+                - "database_uri" (optional)
+                - "is_new_topic" (optional): boolean
+            2. personal_memory context:
+                - "target_type": personal_memory
+                - "process_strategy" (optional)
+                - "metadata"[Dict]: input_metadata
+                - "user_id"
+                - "source_id": build_id
+                - "chat_messages": [{message 1},{message 2},...]
+                - "topic_name"
+                - "force_regenerate" (optional): boolean
+            
             execution_id: Optional execution ID
 
         Returns:
