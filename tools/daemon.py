@@ -56,7 +56,7 @@ class PipelineDaemon:
                 
                 if result:
                     logger.info(f"Processed result: {result}")
-                    self.is_running = False  # Stop after processing
+                    # self.is_running = False  # Stop after processing
             except Exception as e:
                 logger.error(f"Error in daemon main loop: {e}", exc_info=True)
 

@@ -310,7 +310,6 @@ async def save_data(
     - `process_strategy` (optional): A JSON object for processing options.
     """
     content_type = request.headers.get("content-type", "")
-
     if "multipart/form-data" in content_type:
         if not file or not metadata or not target_type:
             raise HTTPException(
@@ -358,7 +357,7 @@ async def save_data_pipeline(
     Enhanced save endpoint using tools pipeline system.
     """
     content_type = request.headers.get("content-type", "")
-
+    base_url = str(request.base_url)
     if "multipart/form-data" in content_type:
         # Validate required parameters
         if not files or len(files) == 0 or not target_type:
@@ -463,7 +462,7 @@ async def save_data_pipeline(
                     "topic_name": topic_name,
                     "processed_docs": processed_docs
                 },
-                "retrieval": f"curl 'http://localhost:8000/api/v1/tasks/{task_id}'",
+                "retrieval": f"{base_url}api/v1/tasks/{task_id}",
             },
         )
 
@@ -529,7 +528,7 @@ async def save_data_pipeline(
                         "phase": "stored",
                         "task_id": task_id
                     },
-                    "retrieval": f"curl 'http://localhost:8000/api/v1/tasks/{task_id}'",
+                    "retrieval": f"{base_url}api/v1/tasks/{task_id}",
                 },
             )
         
@@ -585,9 +584,9 @@ async def get_background_task_status(task_id: str) -> JSONResponse:
     SessionLocal = db_manager.get_session_factory()
     
     with SessionLocal() as db:
-        task_list = db.query(BackgroundTask).filter(BackgroundTask.task_id == task_id).all()
-        
-        if not task_list:
+        task = db.query(BackgroundTask).filter(BackgroundTask.task_id == task_id).order_by(BackgroundTask.created_at.desc()).first()
+
+        if not task:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Task {task_id} not found"
@@ -598,7 +597,7 @@ async def get_background_task_status(task_id: str) -> JSONResponse:
             status_code=status.HTTP_200_OK, 
             content={
                 "status": "success",
-                "message": f"Found {len(task_list)} task(s) with ID {task_id}",
-                "data": [task.to_dict() for task in task_list]
+                "message": f"Found task with ID {task_id}",
+                "data": task.to_dict() 
             }
         )
