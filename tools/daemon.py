@@ -104,14 +104,23 @@ class PipelineDaemon:
             logger.info(
                 f"Found {len(uploaded_data_list)} uploaded data sources to process"
             )
+
         grouped = defaultdict(list)
-
         for rds in uploaded_data_list:
-            grouped[(rds.topic_name, rds.target_type, json.dumps(rds.process_strategy, sort_keys=True))].append(rds)
+            key = (rds.topic_name, rds.target_type, json.dumps(rds.process_strategy, sort_keys=True))
+            grouped[key].append(rds)
+        
+        # Split groups larger than 5 files into smaller batches
+        final_groups = []
+        for key, rds_list in grouped.items():
+            # Split into chunks of max 5 files each
+            for i in range(0, len(rds_list), 5):
+                chunk = rds_list[i:i+5]
+                final_groups.append((key, chunk))
 
-        logger.info(f"Grouped {len(uploaded_data_list)} uploaded files into {len(grouped)} groups for processing")
+        logger.info(f"Grouped {len(uploaded_data_list)} uploaded files into {len(final_groups)} batches (max 5 files each) for processing")
 
-        for (topic_name, target_type, process_strategy_json), rds_list in grouped.items():
+        for (topic_name, target_type, process_strategy_json), rds_list in final_groups:
             process_strategy = json.loads(process_strategy_json) if process_strategy_json else None
 
             context = {
@@ -144,8 +153,8 @@ class PipelineDaemon:
             logger.info(f"Context prepared for topic '{topic_name}': {len(context['files'])} files")
 
             execution_id = hashlib.sha256(topic_name.encode("utf-8")).hexdigest()
-
             logger.info(f"Execution ID for topic '{topic_name}': {execution_id}")
+
             try:
                 self.register_background_task(
                     task_id=execution_id,
@@ -159,11 +168,26 @@ class PipelineDaemon:
                 logger.info(
                     f"Pipeline execution completed for topic '{topic_name}': {result}"
                 )
+
+                result_dict = result.to_dict()
+                if result_dict.get("success") == "false":
+                    error = result_dict.get("error_messgae", None)
+                    with SessionLocal() as db:
+                        task = db.query(BackgroundTask).filter_by(task_id=execution_id, status="processing").first()
+                        if task:
+                            task.status = "failed"
+                            task.error_message = str(error)
+                            db.commit()
+                    # TODO: Trace back RDS data and mark as 'uploaded'
+
+                    total_result = {"status": "Failed", "message": f'Error: {str(error)}'}
+                    return  total_result 
+                
                 with SessionLocal() as db:
                     task = db.query(BackgroundTask).filter_by(task_id=execution_id, status="processing").first()
                     if task:
                         task.status = "completed"
-                        task.result = result.to_dict()
+                        task.result = result_dict
                         db.commit()
             except ValueError as e:
                 logger.error(
@@ -176,6 +200,8 @@ class PipelineDaemon:
                         task.status = "failed"
                         task.error_message = str(e)
                         db.commit()
+                # TODO: Trace back RDS data and mark as 'uploaded'
+
                 total_result = {"status": "Failed", "message": f'Error: {str(e)}'}
                 return  total_result 
                 
@@ -191,6 +217,8 @@ class PipelineDaemon:
                         task.status = "failed"
                         task.error_message = str(e)
                         db.commit()
+                # TODO: Trace back RDS data and mark as 'uploaded'
+                
                 total_result = {"status": "Failed", "message": f'Error: {str(e)}'}
                 return  total_result 
         
@@ -222,11 +250,20 @@ class PipelineDaemon:
         grouped = defaultdict(list)
 
         for rds in uploaded_data_list:
-            grouped[(rds.topic_name, rds.target_type, json.dumps(rds.process_strategy, sort_keys=True))].append(rds)
+            key = (rds.topic_name, rds.target_type, json.dumps(rds.process_strategy, sort_keys=True))
+            grouped[key].append(rds)
+        
+        # Split groups larger than 5 files into smaller batches
+        final_groups = []
+        for key, rds_list in grouped.items():
+            # Split into chunks of max 5 files each
+            for i in range(0, len(rds_list), 5):
+                chunk = rds_list[i:i+5]
+                final_groups.append((key, chunk))
 
-        logger.info(f"Grouped {len(uploaded_data_list)} memory messages into {len(grouped)} groups for processing")
+        logger.info(f"Grouped {len(uploaded_data_list)} memory messages into {len(final_groups)} batches (max 5 files each) for processing")
 
-        for (topic_name, target_type, process_strategy_json), rds_list in grouped.items():
+        for (topic_name, target_type, process_strategy_json), rds_list in final_groups:
             process_strategy = json.loads(process_strategy_json) if process_strategy_json else None
             
             messages = []
@@ -272,7 +309,20 @@ class PipelineDaemon:
                 # Process the existing source data
                 orchestrator = PipelineOrchestrator()
                 result = orchestrator.execute_with_process_strategy(context, execution_id)
-
+                
+                result_dict = result.to_dict()
+                if result_dict.get("success") == "false":
+                    error = result_dict.get("error_messgae", None)
+                    with SessionLocal() as db:
+                        task = db.query(BackgroundTask).filter_by(task_id=execution_id, status="processing").first()
+                        if task:
+                            task.status = "failed"
+                            task.error_message = str(error)
+                            db.commit()
+                    # TODO: Trace back RDS data and mark as 'uploaded'
+                    total_result = {"status": "Failed", "message": f'Error: {str(error)}'}
+                    return  total_result 
+                
                 # Update task status with success and clean up chat_messages
                 with SessionLocal() as db:
                     task = db.query(BackgroundTask).filter_by(task_id=execution_id, status="processing").first()
