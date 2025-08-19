@@ -170,8 +170,8 @@ class PipelineDaemon:
                 )
 
                 result_dict = result.to_dict()
-                if result_dict.get("success") == "false":
-                    error = result_dict.get("error_messgae", None)
+                error = result_dict.get("error_message")
+                if error:
                     with SessionLocal() as db:
                         task = db.query(BackgroundTask).filter_by(task_id=execution_id, status="processing").first()
                         if task:
@@ -311,8 +311,8 @@ class PipelineDaemon:
                 result = orchestrator.execute_with_process_strategy(context, execution_id)
                 
                 result_dict = result.to_dict()
-                if result_dict.get("success") == "false":
-                    error = result_dict.get("error_messgae", None)
+                error = result_dict.get("error_message")
+                if error:
                     with SessionLocal() as db:
                         task = db.query(BackgroundTask).filter_by(task_id=execution_id, status="processing").first()
                         if task:
