@@ -176,7 +176,8 @@ class PipelineDaemon:
                         task = db.query(BackgroundTask).filter_by(task_id=execution_id, status="processing").first()
                         if task:
                             task.status = "failed"
-                            task.error_message = str(error)
+                            task.result = result_dict
+                            task.error = str(error)
                             db.commit()
                     # TODO: Trace back RDS data and mark as 'uploaded'
 
@@ -198,7 +199,7 @@ class PipelineDaemon:
                     task = db.query(BackgroundTask).filter_by(task_id=execution_id, status="processing").first()
                     if task:
                         task.status = "failed"
-                        task.error_message = str(e)
+                        task.error = str(e)
                         db.commit()
                 # TODO: Trace back RDS data and mark as 'uploaded'
 
@@ -215,7 +216,7 @@ class PipelineDaemon:
                     task = db.query(BackgroundTask).filter_by(task_id=execution_id, status="processing").first()
                     if task:
                         task.status = "failed"
-                        task.error_message = str(e)
+                        task.error = str(e)
                         db.commit()
                 # TODO: Trace back RDS data and mark as 'uploaded'
                 
@@ -317,7 +318,7 @@ class PipelineDaemon:
                         task = db.query(BackgroundTask).filter_by(task_id=execution_id, status="processing").first()
                         if task:
                             task.status = "failed"
-                            task.error_message = str(error)
+                            task.error = str(error)
                             db.commit()
                     # TODO: Trace back RDS data and mark as 'uploaded'
                     total_result = {"status": "Failed", "message": f'Error: {str(error)}'}
