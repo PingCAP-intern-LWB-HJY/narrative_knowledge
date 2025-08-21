@@ -104,7 +104,7 @@ async def _process_file_for_knowledge_graph(
 
 
 async def _store_and_get_build_id(
-    file: UploadFile, metadata_str: str, process_strategy: Dict[str, Any]
+    file: UploadFile, target_type: str, metadata_str: str, process_strategy: Dict[str, Any]
 ) -> tuple[Path, str, str, Dict[str, Any]]:
     """Store file and return storage directory and build_id without processing."""
     try:
@@ -161,7 +161,7 @@ async def _store_and_get_build_id(
         )
     else:
         logger.info(f"File {file.filename} for topic {topic_name} is being uploaded.")
-        _create_processing_task(file, storage_directory, file_metadata, build_id, process_strategy)
+        _create_processing_task(file, target_type, storage_directory, file_metadata, build_id, process_strategy)
         status_msg = "uploaded"
 
     processed_doc = ProcessedDocument(
@@ -418,6 +418,7 @@ async def save_data_pipeline(
             
             storage_dir, build_id, topic_name, processed_doc = await _store_and_get_build_id(
                 file=file,
+                target_type=target_type,
                 metadata_str=json.dumps(single_metadata),
                 process_strategy=json.loads(process_strategy) if process_strategy else {}
             )

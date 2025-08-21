@@ -251,7 +251,8 @@ curl "http://localhost:8000/api/v1/tasks/{task_id}"
 
 ### For File Uploads (`multipart/form-data`):
 
-#### Method 1: Separate `links` Parameter
+#### Construct knowledge blocks from documents
+
 **Parameters:**
 - `files`: Single/Batch file(s) to be uploaded (required)
 - `links`: [List] Original document link (optional, must match the number of files)
@@ -259,10 +260,54 @@ curl "http://localhost:8000/api/v1/tasks/{task_id}"
   - `topic_name`: Topic name for knowledge graph building (required)
   - `force_regenerate`: [Boolean] Whether to force regeneration if data already been processed (optional)
   - Additional custom metadata fields
-- `target_type`: Processing target type (required, e.g., "knowledge_graph")
-- `process_strategy`: JSON string with processing pipeline configuration (optional)
+- `target_type`: Processing target type (required, "knowledge_build")
+
+##### Method 1: Use Separate `target_type` ("knowledge_build")
+
+**Examples using curl:**
+
+Single File Uploading:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/save" \
+  -F "files=@pipeline_design.md" \
+  -F 'links=["https://docs.com/doc1"]' \
+  -F 'metadata={"topic_name":"singlek0","force_regenerate":"True"}' \
+  -F "target_type=knowledge_build"
+```
+
+Batch Files Uploading: 
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/save" \
+  -F "files=@pipeline_design.md" \
+  -F "files=@SmartSave_api_v1.md" \
+  -F "files=@knowledge_graph_quality_standard.md" \
+  -F 'links=["https://docs.com/batchk1", "https://docs.com/batchk2", "https://test.com/filesk3"]' \
+  -F 'metadata={"topic_name":"batch_kt1","force_regenerate":"True"}' \
+  -F "target_type=knowledge_build"
+```
+
+##### Method 2: Include `"knowledge_build"` in `process_strategy` when Beginning `knowledge_graph`
+
+Usage: See `Build Knowledge Graphs from documents`.
+
+#### Build Knowledge Graphs from documents
+
+##### Method 1: Separate `links` Parameter
+
+**Parameters:**
+- `files`: Single/Batch file(s) to be uploaded (required)
+- `links`: [List] Original document link (optional, must match the number of files)
+- `metadata`: JSON string containing processing metadata (required)
+  - `topic_name`: Topic name for knowledge graph building (required)
+  - `force_regenerate`: [Boolean] Whether to force regeneration if data already been processed (optional)
+  - Additional custom metadata fields
+- `target_type`: Processing target type (required, e.g., "knowledge_graph", "knowledge_build")
+- `process_strategy`: JSON string with processing pipeline configuration (optional, required for "knowledge_build")
   - `pipeline`: Array of tool names to execute in sequence
-  - Example: `{"pipeline": ["etl", "blueprint_gen", "graph_build"]}`
+  - `knowledge_build`: JSON string to indicate whether to construct knowledge blocks or not (Either "True" or "False"; default: "False")
+  - Example: `{"pipeline": ["etl", "blueprint_gen", "graph_build"], "knowledge_build": "True"}`
 
 **Examples using curl:**
 
@@ -274,7 +319,7 @@ curl -X POST "http://localhost:8000/api/v1/save" \
   -F 'links=["https://docs.com/doc1"]' \
   -F 'metadata={"topic_name":"single0","force_regenerate":"True"}' \
   -F "target_type=knowledge_graph" \
-  -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
+  -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"], "knowledge_build": "False"}'
 ```
 
 Batch Files Uploading: 
@@ -287,11 +332,10 @@ curl -X POST "http://localhost:8000/api/v1/save" \
   -F 'links=["https://docs.com/batch1", "https://docs.com/batch2", "https://test.com/files3"]' \
   -F 'metadata={"topic_name":"batch_t1","force_regenerate":"False"}' \
   -F "target_type=knowledge_graph" \
-  -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
+  -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"], "knowledge_build": "True"}'
 ```
 
-#### Alternative Method to include `links`
-##### Include `links` directly in metadata
+##### Alternative Method to include `links` (directly in metadata)
 
 **Parameters:**
 - `files`: Single/Batch files to be uploaded (required)
@@ -303,7 +347,8 @@ curl -X POST "http://localhost:8000/api/v1/save" \
 - `target_type`: Processing target type (required, e.g., "knowledge_graph")
 - `process_strategy`: JSON string with processing pipeline configuration (optional)
   - `pipeline`: Array of tool names to execute in sequence
-  - Example: `{"pipeline": ["etl", "blueprint_gen", "graph_build"]}`
+  - `knowledge_build`: JSON string to indicate whether to construct knowledge blocks or not (Either "True" or "False"; default: "False")
+  - Example: `{"pipeline": ["etl", "blueprint_gen", "graph_build"], "knowledge_build": "True"}`
 
 **Examples using curl:**
 
@@ -314,7 +359,7 @@ curl -X POST "http://localhost:8000/api/v1/save" \
   -F "files=@pipeline_design.md" \
   -F 'metadata={"topic_name":"single0","links":["https://example.com/docs1"]}' \
   -F "target_type=knowledge_graph" \
-  -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"]}'
+  -F 'process_strategy={"pipeline":["etl","blueprint_gen","graph_build"], "knowledge_build": "True"}'
 ```
 
 Batch Files Uploading:

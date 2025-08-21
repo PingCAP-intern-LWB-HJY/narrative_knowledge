@@ -97,7 +97,7 @@ class PipelineDaemon:
                 db.query(RawDataSource)
                 .filter(
                     RawDataSource.status == "uploaded",
-                    RawDataSource.target_type == "knowledge_graph",
+                    RawDataSource.target_type.in_(["knowledge_graph", "knowledge_build"]),
                 )
                 .all()
             )

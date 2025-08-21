@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Optional
 from knowledge_graph.models import (
     SourceData,
     ContentStore,
+    RawDataSource,
     GraphBuild,
     KnowledgeBlock,
     BlockSourceMapping,
@@ -17,7 +18,8 @@ from setting.db import SessionLocal
 from etl.extract import extract_source_data
 from utils.token import encode_text, decode_tokens
 from llm.factory import LLMInterface
-from setting.base import MAX_PROMPT_TOKENS
+from llm.embedding import get_text_embedding
+from setting.base import MAX_PROMPT_TOKENS, LLM_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +62,8 @@ class KnowledgeBuilder:
             embedding_func: Function to generate embeddings
             session_factory: Database session factory. If None, uses default SessionLocal.
         """
-        self.llm_client = llm_client
-        self.embedding_func = embedding_func
+        self.llm_client = LLMInterface("ollama", model=LLM_MODEL)
+        self.embedding_func = embedding_func or get_text_embedding
         self.SessionLocal = session_factory or SessionLocal
 
     def extract_knowledge(
@@ -71,18 +73,20 @@ class KnowledgeBuilder:
     ):
         # Extract basic info of source
         doc_link = attributes.get("doc_link", None)
+        topic_name = attributes.get("topic_name", None)
+        file_name = attributes.get("filename", None)
         if doc_link is None or doc_link == "":
             doc_link = source_path
 
         with self.SessionLocal() as db:
             # Check if source data already exists by doc_link
             existing_source = (
-                db.query(SourceData).filter(SourceData.link == doc_link).first()
+                db.query(SourceData).filter(SourceData.link == doc_link, SourceData.topic_name == topic_name).first()
             )
 
             if existing_source:
                 logger.info(
-                    f"Source data already exists for {source_path} (matched by link), reusing existing id: {existing_source.id}"
+                    f"Source data already exists for '{source_path}' with topic name '{topic_name}' , reusing existing id: {existing_source.id}"
                 )
                 return {
                     "status": "success",
@@ -94,6 +98,24 @@ class KnowledgeBuilder:
                     "source_name": existing_source.name,
                     "source_attributes": existing_source.attributes,
                 }
+            
+            existing_rds = (
+                db.query(RawDataSource).filter(
+                    RawDataSource.topic_name == topic_name,
+                    RawDataSource.original_filename == file_name,
+                    RawDataSource.target_type == "knowledge_build",
+                    RawDataSource.status == "uploaded"
+                ).first()
+            )
+
+            if existing_rds:
+                logger.info(
+                    f"Found RawDataSource '{existing_rds.id}' for file '{file_name}' with topic name '{topic_name}' and target_type {existing_rds.target_type}"
+                )
+                content_hash = existing_rds.file_hash
+                source_path = existing_rds.file_path
+                existing_rds.status = "etl_completed"
+                db.commit()
 
         # Read raw file content first for hash calculation
         with open(source_path, "rb") as f:
@@ -141,6 +163,7 @@ class KnowledgeBuilder:
 
             source_data = SourceData(
                 name=Path(source_path).stem,
+                topic_name=topic_name,
                 link=doc_link,
                 source_type=content_type,
                 content_hash=content_store.content_hash,

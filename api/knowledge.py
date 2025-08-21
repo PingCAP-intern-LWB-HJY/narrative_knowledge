@@ -23,6 +23,7 @@ from api.models import (
 from knowledge_graph.models import (
     RawDataSource,
     BackgroundTask,
+    GraphBuild
 )
 
 logger = logging.getLogger(__name__)
@@ -294,7 +295,7 @@ def _save_uploaded_file_with_metadata(
 
 
 def _create_processing_task(
-    file: UploadFile, storage_directory: Path, metadata: DocumentMetadata, build_id: str, process_strategy: Dict[str, Any] = {}
+    file: UploadFile, target_type: str, storage_directory: Path, metadata: DocumentMetadata, build_id: str, process_strategy: Dict[str, Any] = {}
 ) -> None:
     """
     Create a background processing task for uploaded document.
@@ -328,7 +329,7 @@ def _create_processing_task(
         with SessionLocal() as db:
             build_status = RawDataSource(
                 topic_name=metadata.topic_name,
-                target_type= "knowledge_graph",  # Default target type TODO: make configurable
+                target_type= target_type,
                 process_strategy=process_strategy or {},
                 build_id=build_id,
                 file_path=str(file_path),
@@ -535,7 +536,7 @@ async def upload_documents(
                     f"File with identical metadata already exists: {file.filename}"
                 )
             else:
-                _create_processing_task(storage_directory, file_metadata, build_id)
+                _create_processing_task(file, storage_directory, file_metadata, build_id)
 
                 processed_doc = ProcessedDocument(
                     id=build_id,

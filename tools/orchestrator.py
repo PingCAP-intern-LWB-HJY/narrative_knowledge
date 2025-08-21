@@ -3,7 +3,7 @@ Pipeline Orchestrator for dynamic tool sequencing.
 """
 
 import logging
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import uuid
 
@@ -40,6 +40,8 @@ class PipelineOrchestrator:
             "batch_doc_existing_topic": ["etl", "blueprint_gen", "graph_build"],
             "new_topic_batch": ["etl", "blueprint_gen", "graph_build"],
             "text_to_graph": ["graph_build"],
+            # Knowledge builder pipeline (standalone)
+            "knowledge_build": ["knowledge_builder"],
             # Memory pipelines
             "memory_direct_graph": [
                 "memory_graph_build"
@@ -53,6 +55,7 @@ class PipelineOrchestrator:
             "blueprint_gen": "BlueprintGenerationTool",
             "graph_build": "GraphBuildTool",
             "memory_graph_build": "MemoryGraphBuildTool",
+            "knowledge_builder": "KnowledgeBuilderTool",
         }
 
     def _register_tools(self):
@@ -63,6 +66,7 @@ class PipelineOrchestrator:
             from .blueprint_generation_tool import BlueprintGenerationTool
             from .graph_build_tool import GraphBuildTool
             from .memory_graph_build_tool import MemoryGraphBuildTool
+            from .knowledge_builder_tool import KnowledgeBuilderTool
 
             # Register tools if not already registered
             if not TOOL_REGISTRY.get_tool("DocumentETLTool"):
@@ -85,6 +89,13 @@ class PipelineOrchestrator:
                 TOOL_REGISTRY.register(
                     MemoryGraphBuildTool(
                         session_factory=self.session_factory, llm_client=llm_client
+                    )
+                )
+            if not TOOL_REGISTRY.get_tool("KnowledgeBuilderTool"):
+                TOOL_REGISTRY.register(
+                    KnowledgeBuilderTool(
+                        session_factory=self.session_factory,
+                        llm_client=llm_client
                     )
                 )
 
@@ -143,12 +154,17 @@ class PipelineOrchestrator:
                 )
                 try:
                     tools = [self.tool_key_mapping[key] for key in pipeline]
+                    if "knowledge_build" in process_strategy and "knowledge_build" not in pipeline:
+                        use_kb = process_strategy["knowledge_build"]
+                        tools.append("KnowledgeBuilderTool") if use_kb == "True" else tools
+                        self.logger.info(f"KnowledgeBuild with specific pipeline? (True/False): {use_kb}")
                 except KeyError as e:
                     return ToolResult(
                         success=False,
                         error_message=f"Invalid tool key {e} in pipeline configuration",
                     )
                 return self.execute_custom_pipeline(tools, context, execution_id)
+            
             elif "personal_memory" in target_type:
                 tools = ["MemoryGraphBuildTool"]
                 # Tell the user we still use MemoryGraphBuildTool even though process_strategy is provided
@@ -164,7 +180,12 @@ class PipelineOrchestrator:
         self.logger.info(f"Using new topic? (True/False): {is_new_topic}")
 
         # Determine input type and context
-        input_type = "dialogue" if target_type == "personal_memory" else "document"
+        if target_type == "personal_memory":
+            input_type = "dialogue"
+        elif target_type == "knowledge_build":
+            input_type = "build"
+        else:
+            input_type = "document"
         if isinstance(context.get("input"), str) and not context.get("files"):
             input_type = "text"
 
@@ -175,12 +196,23 @@ class PipelineOrchestrator:
 
         self.logger.info(f"Using pipeline name: {pipeline_name}")
 
-        return self.execute_pipeline(pipeline_name, context, execution_id)
+        # Handle direct knowledge_build specification
+        if "knowledge_build" in process_strategy and "knowledge_graph" in target_type:
+            use_kb = process_strategy["knowledge_build"]
+            kb = True if use_kb == "True" else False
+            self.logger.info(
+                f"KnowledgeBuild without specific pipeline? (True/False): {kb}"
+            )
+        else:
+            kb = False
+
+        return self.execute_pipeline(pipeline_name, context, kb, execution_id)
 
     def execute_pipeline(
         self,
         pipeline_name: str,
         context: Dict[str, Any],
+        kb: bool,
         execution_id: Optional[str] = None,
     ) -> ToolResult:
         """
@@ -203,6 +235,8 @@ class PipelineOrchestrator:
 
         tool_keys = self.standard_pipelines[pipeline_name]
         tools = [self.tool_key_mapping[key] for key in tool_keys]
+        if kb:
+            tools.append("KnowledgeBuilderTool")
 
         self.logger.info(f"Execute pipeline with tools: {tools}")
 
@@ -276,7 +310,7 @@ class PipelineOrchestrator:
 
                 results[tool_name] = result
                 pipeline_context = self._update_context(
-                    tool_name, pipeline_context, result
+                    tool_name, pipeline_context, context, result
                 )
 
                 self.logger.info(f"Tool completed: {tool_name}")
@@ -350,7 +384,11 @@ class PipelineOrchestrator:
                 return "memory_direct_graph"  # Direct graph extraction from dialogue
             else:
                 return "memory_single"  # Single memory processing
-
+        
+        # Knowledge Build pipeline for files
+        if target_type == "knowledge_build":
+            return "knowledge_build"
+        
         # Knowledge graph pipeline for documents
         if target_type == "knowledge_graph":
             # Document processing pipeline
@@ -479,10 +517,41 @@ class PipelineOrchestrator:
                 "source_id": context.get("source_id"),
             }
 
+        elif tool_key == "knowledge_builder":
+            # Knowledge builder now supports batch processing via files array
+            files = context.get("files", [])
+            metadata = context.get("metadata", {})
+            
+            if files:
+                # Batch processing - pass all files to KnowledgeBuilderTool
+                return {
+                    "files": files,
+                    "attributes": {
+                        "topic_name": context.get("topic_name"),
+                        **metadata
+                    }
+                }
+            else:
+                # Single file processing - maintain backward compatibility
+                source_path = context.get("link") or context.get("file_path")
+                attributes = {
+                    "doc_link": context.get("link"),
+                    "topic_name": context.get("topic_name"),
+                    **metadata
+                }
+                
+                # Clean None values
+                attributes = {k: v for k, v in attributes.items() if v is not None}
+                
+                return {
+                    "source_path": source_path,
+                    "attributes": attributes
+                }
+
         return context.copy()
 
     def _update_context(
-        self, tool_name: str, context: Dict[str, Any], result: ToolResult
+        self, tool_name: str, context: Dict[str, Any], ori_context: Dict[str, Any], result: ToolResult
     ) -> Dict[str, Any]:
         """Update context with results from a tool."""
         updated_context = context.copy()
@@ -511,7 +580,20 @@ class PipelineOrchestrator:
         elif tool_key == "blueprint_gen" and result.success:
             updated_context["blueprint_id"] = result.data.get("blueprint_id")
             updated_context["topic_name"] = result.metadata.get("topic_name")
-            self.logger.info(f"successfully updated context: 'blueprint_id:{updated_context['blueprint_id']}, topic_name:{updated_context['topic_name']}' after blueprint generation")
+            self.logger.info(f"Successfully updated context: 'blueprint_id:{updated_context['blueprint_id']}, topic_name:{updated_context['topic_name']}' after blueprint generation")
+        
+        elif tool_key == "graph_build" and result.success:
+            updated_context["files"] = ori_context.get("files", [])
+            updated_context["metadata"] = ori_context.get("metadata", {})
+            updated_context["topic_name"] = ori_context.get("topic_name", "")
+            self.logger.info(f"Successfully updated context: 'files:{updated_context['files']}, metadata:{updated_context['metadata']}' after graph build")
+
+        elif tool_key == "knowledge_builder" and result.success:
+            updated_context["source_ids"] = result.data.get("source_ids")
+            updated_context["knowledge_blocks_count"] = result.data.get("knowledge_blocks_count", 0)
+            updated_context["topic_name"] = result.metadata.get("source_path", "unknown")
+            self.logger.info(f"KnowledgeBuilder completed for source: {updated_context['source_ids']}")
+        
         return updated_context
 
     def get_existing_blueprint_id(self, topic_name: str) -> Optional[str]:
@@ -553,7 +635,7 @@ class PipelineOrchestrator:
         Returns:
             True if new topic, False if existing, or default for memory processing
         """
-        if target_type == "personal_memory":
+        if target_type == "personal_memory" or target_type == "knowledge_build":
             return False
         
         # First check explicit metadata flag
