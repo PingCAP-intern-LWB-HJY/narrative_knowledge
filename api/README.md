@@ -253,6 +253,8 @@ curl "http://localhost:8000/api/v1/tasks/{task_id}"
 
 #### Construct knowledge blocks from documents
 
+##### Method 1: Use Separate `target_type` ("knowledge_build")
+
 **Parameters:**
 - `files`: Single/Batch file(s) to be uploaded (required)
 - `links`: [List] Original document link (optional, must match the number of files)
@@ -261,8 +263,6 @@ curl "http://localhost:8000/api/v1/tasks/{task_id}"
   - `force_regenerate`: [Boolean] Whether to force regeneration if data already been processed (optional)
   - Additional custom metadata fields
 - `target_type`: Processing target type (required, "knowledge_build")
-
-##### Method 1: Use Separate `target_type` ("knowledge_build")
 
 **Examples using curl:**
 

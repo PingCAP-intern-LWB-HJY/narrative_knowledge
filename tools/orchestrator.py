@@ -172,6 +172,14 @@ class PipelineOrchestrator:
                     f"We have process_strategy with target_type '{target_type}'. Using tool '{tools}'"
                 )
                 return self.execute_custom_pipeline(tools, context, execution_id)
+            
+            elif "knowledge_build" in target_type:
+                tools = ["KnowledgeBuilderTool"]
+                # Tell the user we still use KnowledgeBuilderTool even though process_strategy is provided
+                self.logger.info(
+                    f"We have process_strategy with target_type '{target_type}'. Using tool '{tools}'"
+                )
+                return self.execute_custom_pipeline(tools, context, execution_id)
 
         # Default pipeline selection
         topic_name = context.get("topic_name", "")

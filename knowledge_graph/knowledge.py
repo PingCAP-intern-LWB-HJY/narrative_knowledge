@@ -85,6 +85,16 @@ class KnowledgeBuilder:
             )
 
             if existing_source:
+                rds = (
+                    db.query(RawDataSource).filter(
+                        RawDataSource.topic_name == topic_name,
+                        RawDataSource.original_filename == file_name,
+                        RawDataSource.target_type == "knowledge_build",
+                        RawDataSource.status == "uploaded"
+                    ).first()
+                )
+                rds.status = "etl_completed"
+                db.commit()
                 logger.info(
                     f"Source data already exists for '{source_path}' with topic name '{topic_name}' , reusing existing id: {existing_source.id}"
                 )
@@ -117,16 +127,15 @@ class KnowledgeBuilder:
                 existing_rds.status = "etl_completed"
                 db.commit()
 
-        # Read raw file content first for hash calculation
-        with open(source_path, "rb") as f:
-            raw_content = f.read()
-            content_hash = hashlib.sha256(raw_content).hexdigest()
+            # Read raw file content first for hash calculation
+            with open(source_path, "rb") as f:
+                raw_content = f.read()
+                content_hash = hashlib.sha256(raw_content).hexdigest()
 
-        # Initialize variables
-        extracted_content = None
-        content_type = _get_content_type_from_path(source_path)
+            # Initialize variables
+            extracted_content = None
+            content_type = _get_content_type_from_path(source_path)
 
-        with self.SessionLocal() as db:
             # Check if content already exists
             content_store = (
                 db.query(ContentStore).filter_by(content_hash=content_hash).first()
@@ -162,12 +171,19 @@ class KnowledgeBuilder:
                 )
 
             source_data = SourceData(
-                name=Path(source_path).stem,
+                name=file_name or Path(source_path).stem,
                 topic_name=topic_name,
+                raw_data_source_id=existing_rds.id,
+                content_hash=content_store.content_hash,
                 link=doc_link,
                 source_type=content_type,
-                content_hash=content_store.content_hash,
-                attributes=attributes,
+                attributes={
+                    "file_path": str(source_path),
+                    "original_filename": file_name,
+                    "file_size": len(raw_content),
+                    "extraction_method": "KnowledgeBuildTool",
+                },
+                status="created",
             )
 
             db.add(source_data)
