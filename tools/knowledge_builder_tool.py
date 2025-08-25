@@ -12,6 +12,7 @@ from tools.base import BaseTool, ToolResult
 from knowledge_graph.knowledge import KnowledgeBuilder
 from llm.factory import LLMInterface
 from llm.embedding import get_text_embedding
+from knowledge_graph.models import SourceData
 from setting.db import SessionLocal
 from setting.base import LLM_MODEL
 
@@ -213,6 +214,12 @@ class KnowledgeBuilderTool(BaseTool):
                 except Exception as e:
                     current_source_path = str(file_info) if isinstance(file_info, (str, Path)) else str(file_info.get("link") or file_info.get("source_path") or file_info.get("filename", f"file_{idx}"))
                     logger.error(f"Error processing file {current_source_path}: {e}", exc_info=True)
+                    with SessionLocal() as db:
+                        source_data = (
+                            db.query(SourceData).filter(SourceData.id == source_id).first()
+                        )
+                        source_data.status = "blocks_failed"
+                        db.commit()
                     batch_results.append({
                         "source_path": current_source_path,
                         "success": False,
@@ -233,7 +240,7 @@ class KnowledgeBuilderTool(BaseTool):
             }
 
             success = len(failed_files) == 0
-            error_message = None if success else f"Failed to process {len(failed_files)} out of {len(files)} files"
+            error_message = None if success else f"Failed to process {len(failed_files)} out of {len(files)} files."
 
             return ToolResult(
                 success=success,

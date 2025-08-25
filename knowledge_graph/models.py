@@ -111,7 +111,7 @@ class SourceData(Base):
     
     # Status tracking for graph building
     status = Column(
-        Enum("created", "updated", "graph_pending", "graph_processing", "graph_completed", "graph_failed"),
+        Enum("created", "updated", "graph_pending", "graph_processing", "graph_completed", "graph_failed", "blocks_processing", "blocks_completed", "blocks_failed"),
         nullable=False,
         default="created",
     )

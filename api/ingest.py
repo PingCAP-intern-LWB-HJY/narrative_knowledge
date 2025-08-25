@@ -153,15 +153,20 @@ async def _store_and_get_build_id(
         )
         if build_status:
             is_existing = True
+            build_status.target_type = target_type
+            build_status.status = "uploaded"
+            build_status.raw_data_source_metadata = file_metadata.dict()
+            build_status.process_strategy = process_strategy
+            db.commit()
 
     if is_existing:
-        status_msg = f"already_exists for topic {topic_name}"
+        status_msg = f"File {file.filename} already_exists for topic {topic_name}. Apply the latest uploaded information."
         logger.info(
-            f"File {file.filename} for topic {topic_name} already exists in the database."
+            f"File {file.filename} for topic {topic_name} already exists in the database. Apply the latest uploaded information."
         )
     else:
         logger.info(f"File {file.filename} for topic {topic_name} is being uploaded.")
-        _create_processing_task(file, target_type, storage_directory, file_metadata, build_id, process_strategy)
+        _create_processing_task(file, storage_directory, file_metadata, build_id, target_type, process_strategy)
         status_msg = "uploaded"
 
     processed_doc = ProcessedDocument(

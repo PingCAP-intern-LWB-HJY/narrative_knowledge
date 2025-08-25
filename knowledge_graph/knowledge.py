@@ -85,13 +85,9 @@ class KnowledgeBuilder:
             )
 
             if existing_source:
+                rds_id = existing_source.raw_data_source_id
                 rds = (
-                    db.query(RawDataSource).filter(
-                        RawDataSource.topic_name == topic_name,
-                        RawDataSource.original_filename == file_name,
-                        RawDataSource.target_type == "knowledge_build",
-                        RawDataSource.status == "uploaded"
-                    ).first()
+                    db.query(RawDataSource).filter(RawDataSource.id == rds_id).first()
                 )
                 rds.status = "etl_completed"
                 db.commit()
@@ -120,7 +116,7 @@ class KnowledgeBuilder:
 
             if existing_rds:
                 logger.info(
-                    f"Found RawDataSource '{existing_rds.id}' for file '{file_name}' with topic name '{topic_name}' and target_type {existing_rds.target_type}"
+                    f"Found RawDataSource '{existing_rds.id}' for file '{file_name}' with topic name '{topic_name}' and target_type '{existing_rds.target_type}'"
                 )
                 content_hash = existing_rds.file_hash
                 source_path = existing_rds.file_path
@@ -218,6 +214,8 @@ class KnowledgeBuilder:
             source_data = (
                 db.query(SourceData).filter(SourceData.id == source_id).first()
             )
+            source_data.status = "blocks_processing"
+            db.commit()
             if not source_data:
                 raise ValueError(f"SourceData with id {source_id} not found")
 
@@ -233,6 +231,8 @@ class KnowledgeBuilder:
                 logger.info(
                     f"Found {len(existing_blocks)} existing knowledge blocks for source {source_id}"
                 )
+                source_data.status = "blocks_completed"
+                db.commit()
                 existing_blocks_list = []
                 for block in existing_blocks:
                     existing_blocks_list.append(
@@ -484,7 +484,7 @@ class KnowledgeBuilder:
                 db.bulk_insert_mappings(BlockSourceMapping, mappings_to_create)
             else:
                 logger.info("All block-source mappings already exist")
-
+            source_data.status = "blocks_completed"
             db.commit()
             logger.info(
                 f"Processing completed for source {source_id}. Created {len(blocks_to_create)} new blocks, reused {len(existing_blocks)} existing blocks"

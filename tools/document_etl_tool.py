@@ -523,6 +523,7 @@ class DocumentETLTool(BaseTool):
 
                     if existing_source_data:
                         raw_data_source.status = "etl_completed"
+                        db.commit()
                         self.logger.info(
                             f"SourceData already exists for file: {file_path} in topic {existing_source_data.topic_name}"
                         )

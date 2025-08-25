@@ -295,7 +295,12 @@ def _save_uploaded_file_with_metadata(
 
 
 def _create_processing_task(
-    file: UploadFile, target_type: str, storage_directory: Path, metadata: DocumentMetadata, build_id: str, process_strategy: Dict[str, Any] = {}
+    file: UploadFile, 
+    storage_directory: Path, 
+    metadata: DocumentMetadata, 
+    build_id: str, 
+    target_type: Optional[str] = None, 
+    process_strategy: Dict[str, Any] = {}
 ) -> None:
     """
     Create a background processing task for uploaded document.
@@ -329,7 +334,7 @@ def _create_processing_task(
         with SessionLocal() as db:
             build_status = RawDataSource(
                 topic_name=metadata.topic_name,
-                target_type= target_type,
+                target_type=target_type,
                 process_strategy=process_strategy or {},
                 build_id=build_id,
                 file_path=str(file_path),
